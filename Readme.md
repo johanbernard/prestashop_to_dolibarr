@@ -3,7 +3,7 @@ Marche à suivre :
 Cote Prestashop :
 1. Desinstaller toute ancienne version de "Prestashop to Dolibarr"
 
-2. Si vous faites l'installation manuellement : copier le repertoire "prestashop_dolibarr" dans le repertoire "modules/" de votre Prestashop
+2. Si vous faites l'installation manuellement : copier le repertoire "prestashop_to_dolibarr" dans le repertoire "modules/" de votre Prestashop
 
 3. Installer le module "Prestashop to dolibarr" (Outils de migration)
 
