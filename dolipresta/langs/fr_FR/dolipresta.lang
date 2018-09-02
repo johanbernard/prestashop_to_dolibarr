@@ -1,0 +1,21 @@
+# Language file - fr_FR - dolipresta
+CHARSET=UTF-8
+dolipresta@title=Paramétrage des Webservices
+dolipresta@KeyForWebServicesAccess=>> DOLIBARR <br><i>(A reporter dans le module PRESTASHOP "prestashop to Dolibarr")</i>
+dolipresta@KeyOfPrestashopWebServicesAccess=>> PRESTASHOP Web Services</font><br><i>(Veuillez créer un web service avec toutes les cases cochées dans Prestashop dans PARAMÈTRES AVANCÉS > Service web)</i>
+dolipresta@PrestashopStatusTabTitle=>> Statuts PRESTASHOP </font><br><i>(Statuts qui seront repercutés dans Prestashop pour un statut Dolibarr donné)</i>
+dolipresta@DolibarrStatus=Statut dans Dolibarr
+dolipresta@MatchingStatus=Correspondance dans Prestashop
+dolipresta@Key=Clé du Webservice Prestashop
+dolipresta@KeyDolibarr=Clé du Webservice Dolibarr que vous souhaitez
+dolipresta@Trigram =Trigramme
+dolibarr@error=Tous les champs sont obligatoire
+dolipresta@lib=Denomination
+dolipresta@synchronizeStock=synchroniser les stocks de Dolibarr vers Prestashop
+dolipresta@synchronizeOrder=Synchroniser les statuts des commandes de Dolibarr vers Prestashop
+StatusOrderCanceled=Annulée
+StatusOrderDraft=Brouillon (à valider)
+StatusOrderSent=Envoi en cours
+StatusOrderValidated=Validée
+StatusOrderProcessed=Traitée
+StatusOrderToBill=Délivrée

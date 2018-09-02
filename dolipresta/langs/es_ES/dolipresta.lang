@@ -1,0 +1,21 @@
+# Language file - es_ES - dolipresta
+CHARSET=UTF-8
+dolipresta@title=Configuración de los Servicios Web
+dolipresta@KeyForWebServicesAccess=>> DOLIBARR <br><i>(Poner lo en el modulo PRESTASHOP "prestashop to Dolibarr")</i>
+dolipresta@KeyOfPrestashopWebServicesAccess=>> PRESTASHOP Web Servicios<br><i>(Por favor, crea un Web Servicios en Prestashop en Configuración > Web Servicios, con todas las options activadas )</i>
+dolipresta@PrestashopStatusTabTitle=>> Partido en Prestashop</font><br><i>(Estatutos que se reflejarán en un estado dado a Prestashop Dolibarr)</i>
+dolipresta@DolibarrStatus=Estado en Dolibarr
+dolipresta@MatchingStatus=Partido en Prestashop
+dolipresta@Key=Contrasena del Servicios Web Prestashop
+dolipresta@KeyDolibarr=Contrasena del Servicios Web Dolibarr que quieres
+dolipresta@Trigram =Abreviatura
+dolibarr@error=Completar todos los campos
+dolipresta@lib=Nombre
+dolipresta@synchronizeStock=sincronizar la cantidad de los productos de Dolibarr a Prestashop
+dolipresta@synchronizeOrder=Sincronizar los status de los comandos de Dolibarr a Prestashop
+StatusOrderCanceled=Anulado
+StatusOrderDraft=Borrador (a validar)
+StatusOrderSent=Envío en curso
+StatusOrderValidated=Validado
+StatusOrderProcessed=Procesado
+StatusOrderToBill=Emitido

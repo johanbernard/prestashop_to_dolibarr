@@ -1,0 +1,15 @@
+pour MAJ avec prestashop, mettre à jour le fichier 
+dolibarr\htdocs\dolipresta\lib\PSWebServiceLibrary.php
+
+avec le contenu du fichier : 
+https://github.com/PrestaShop/PrestaShop-webservice-lib/blob/master/PSWebServiceLibrary.php
+
+puis remplacer
+'/api/'
+par 
+'/webservice/dispatcher.php?url='
+
+
+--WS pj_ws_commandes--  
+image de server_order.php
+MAJ : L682

@@ -1,0 +1,21 @@
+# Language file - en_US - dolipresta
+CHARSET=UTF-8
+dolipresta@title=Webservices settings
+dolipresta@KeyForWebServicesAccess=>> DOLIBARR <br><i>(to report in the PRESTASHOP module "prestashop to Dolibarr")</i>
+dolipresta@KeyOfPrestashopWebServicesAccess=>> PRESTASHOP Webservice<br><i>(Please create first a Web service in Prestashop in advanced settings > Web service, with all option activated)</i>
+dolipresta@PrestashopStatusTabTitle=>> PRESTASHOP Status</font><br><i>(it will be reported in Prestashop if defined Dolibarr's status is set in Dolibarr)</i>
+dolipresta@DolibarrStatus=Dolibarr' status
+dolipresta@MatchingStatus=Matching in Prestashop
+dolipresta@Key=Prestashop Webservice Key
+dolipresta@KeyDolibarr=Dolibarr Webservice Key that you want
+dolipresta@Trigram =Trigram
+dolibarr@error=All fields are mandatory
+dolipresta@lib=Name
+dolipresta@synchronizeStock=Synchronize stocks from Dolibarr to Prestashop
+dolipresta@synchronizeOrder=Synchronize orders' status from Dolibarr to Prestashop
+StatusOrderCanceled=Canceled
+StatusOrderDraft=Draft (needs to be validated)
+StatusOrderSent=Shipment in process
+StatusOrderValidated=Validated
+StatusOrderProcessed=Processed
+StatusOrderToBill=Delivered
