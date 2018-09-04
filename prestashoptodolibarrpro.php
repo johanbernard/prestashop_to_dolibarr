@@ -1386,7 +1386,7 @@ class PrestashopToDolibarrPro extends Module
 
             $image_path_hd2 = str_replace('\\', '/', _PS_PROD_IMG_DIR_.$image_path_hd);
             if (($image_path_hd2 != '') && (file_exists($image_path_hd2))) {
-                $image_b64 = $soapclient->formatIg(Tools::file_get_contents($image_path_hd2));
+                $image_b64 = base64_encode(Tools::file_get_contents($image_path_hd2));
             } else {
                 $image_b64 = '';
             }
