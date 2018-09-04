@@ -52,7 +52,7 @@ class PrestashopToDolibarrPro extends Module
     {
         $this->name = 'prestashoptodolibarrpro';
         $this->tab = 'migration_tools';
-        $this->version = '1.7.3';
+        $this->version = '1.1.5';
         $this->author = 'PJ Conseil';
         $this->module_key = 'a9616fc7465750635d2cc4293269cb83';
         $this->need_instance = 0;
@@ -66,7 +66,7 @@ class PrestashopToDolibarrPro extends Module
 
     public function initConfig()
     {
-        require_once(_PS_MODULE_DIR_.'prestashoptodolibarrpro/nusoap/lib/p2dWebservices.php');
+        require_once(_PS_MODULE_DIR_.'prestashoptodolibarrpro/nusoap/lib/nusoap.php');
         $config = Configuration::getMultiple(
             array(
                 'DOLIBARR_WS_ADRESS',
@@ -352,7 +352,7 @@ class PrestashopToDolibarrPro extends Module
             }
             Configuration::updateValue('DOLIBARR_WS_TRIGRAM', $trigram_action);
             $this->ws_trigram_value = $trigram_action;
-            $this->_html .= '<div class = "conf confirm"><img src= "../modules/prestashoptodolibarrpro/ok.gif" alt = "'.
+            $this->_html .= '<div class = "conf confirm"><img src= "../img/admin/ok.gif" alt = "'.
             $this->l('OK').'" /> '.
             $this->l('Settings updated, you can test the connection by clicking on the "Test Webservice Acess" button')
             .'</div>';
@@ -380,7 +380,7 @@ class PrestashopToDolibarrPro extends Module
 
             $versionDoli = str_replace(".", "", $version_n['dolibarr']);
             if ($versionDoli >= 360) {
-                $this->_html .= '<div class = "conf confirm"><img src= "../modules/prestashoptodolibarrpro/ok.gif" alt = "'.
+                $this->_html .= '<div class = "conf confirm"><img src= "../img/admin/ok.gif" alt = "'.
                 $this->l('OK').'" /> '
                 .$this->l('Prestashop is linked with Dolibarr! ').'</div>';
                 Configuration::updateValue('DOLIBARR_WS_ADRESS', $this->ws_adress_value);
@@ -411,18 +411,18 @@ class PrestashopToDolibarrPro extends Module
 
             if ($import_client['result'] == 'OK') {
                 if ($import_client['nbrMaxClient']) { //pas totalement importé
-                    $this->_html .= '<div class = "conf warn"><img src= "../modules/prestashoptodolibarrpro/warning.png" alt = "OK" /> '.
+                    $this->_html .= '<div class = "conf warn"><img src= "../img/admin/warning.gif" alt = "OK" /> '.
                     $this->l('You have successfully exported').
                     ' '.$import_client['nbClientImported'].' '.$this->l('customer(s) on').' '.
                     $import_client['nbClientTotal'].
                     $this->l(', press Start again for exporting next customers').'</div>';
                 } else {
-                    $this->_html .= '<div class = "conf confirm"><img src= "../modules/prestashoptodolibarrpro/ok.gif" alt = "OK" /> '.
+                    $this->_html .= '<div class = "conf confirm"><img src= "../img/admin/ok.gif" alt = "OK" /> '.
                     $import_client['nbClientImported'].' '.
                     $this->l('customer(s) on').' '.$import_client['nbClientTotal'].' '.$this->l('exported').'</div>';
                 }
             } else {
-                $this->_html .= '<div class = "conf confirm"><img src= "../modules/prestashoptodolibarrpro/ko.gif" alt = "KO" /> '.
+                $this->_html .= '<div class = "conf confirm"><img src= "../img/admin/ko.gif" alt = "KO" /> '.
                 $this->l('something went wrong').' : '.
                 $import_client['reason'].'</div>';
             }
@@ -436,10 +436,10 @@ class PrestashopToDolibarrPro extends Module
             $reset_customers = $this->resetCustomers();
 
             if ($reset_customers) {
-                $this->_html .= '<div class = "conf confirm"><img src= "../modules/prestashoptodolibarrpro/ok.gif" alt = "OK" /> '.
+                $this->_html .= '<div class = "conf confirm"><img src= "../img/admin/ok.gif" alt = "OK" /> '.
                 $this->l('Reset on customers done').'</div>';
             } else {
-                $this->_html .= '<div class = "conf confirm"><img src= "../modules/prestashoptodolibarrpro/ko.gif" alt = "KO" /> '.
+                $this->_html .= '<div class = "conf confirm"><img src= "../img/admin/ko.gif" alt = "KO" /> '.
                 $this->l('something went wrong').'</div>';
             }
         }
@@ -454,19 +454,19 @@ class PrestashopToDolibarrPro extends Module
 
             if ($result_product['result'] == 'OK') {
                 if ($result_product['nbrMaxProduct']) {//pas totalement importé
-                    $this->_html .= '<div class = "conf warn"><img src= "../modules/prestashoptodolibarrpro/warning.png" alt = "OK" /> '.
+                    $this->_html .= '<div class = "conf warn"><img src= "../img/admin/warning.gif" alt = "OK" /> '.
                     $this->l('You have successfully exported').
                     ' '.$result_product['nbProductImported'].' '.$this->l('product(s) on').' '.
                     $result_product['nbProductTotal'].
                     $this->l(', press Start again for exporting next products').'</div>';
                 } else {
-                    $this->_html .= '<div class = "conf confirm"><img src= "../modules/prestashoptodolibarrpro/ok.gif" alt = "OK" /> '.
+                    $this->_html .= '<div class = "conf confirm"><img src= "../img/admin/ok.gif" alt = "OK" /> '.
                     $result_product['nbProductImported'].
                     ' '.$this->l('product(s) on').' '.$result_product['nbProductTotal'].' '.
                     $this->l('exported').'</div>';
                 }
             } else {
-                $this->_html .= '<div class = "conf confirm"><img src= "../modules/prestashoptodolibarrpro/ko.gif" alt = "KO" /> '.
+                $this->_html .= '<div class = "conf confirm"><img src= "../img/admin/ko.gif" alt = "KO" /> '.
                 $this->l('something went wrong').
                 ' : '.$result_product['reason'].'</div>';
             }
@@ -480,10 +480,10 @@ class PrestashopToDolibarrPro extends Module
             $reset_products = $this->resetProducts();
 
             if ($reset_products) {
-                $this->_html .= '<div class = "conf confirm"><img src= "../modules/prestashoptodolibarrpro/ok.gif" alt = "OK" /> '.
+                $this->_html .= '<div class = "conf confirm"><img src= "../img/admin/ok.gif" alt = "OK" /> '.
                 $this->l('Reset on products done').'</div>';
             } else {
-                $this->_html .= '<div class = "conf confirm"><img src= "../modules/prestashoptodolibarrpro/ko.gif" alt = "KO" /> '.
+                $this->_html .= '<div class = "conf confirm"><img src= "../img/admin/ko.gif" alt = "KO" /> '.
                 $this->l('something went wrong').'</div>';
             }
         }
@@ -500,18 +500,18 @@ class PrestashopToDolibarrPro extends Module
             $this->logInFile('FIN export factures : '.print_r($result_invoice, true));
             if ($result_invoice['result'] == 'OK') {
                 if ($result_invoice['nbrMaxOrder']) {//pas totalement importé
-                    $this->_html .= '<div class = "conf confirm"><img src= "../modules/prestashoptodolibarrpro/ok.gif" alt = "'.
+                    $this->_html .= '<div class = "conf confirm"><img src= "../img/admin/ok.gif" alt = "'.
                     $this->l('Ok').'" /> '.
                     $this->l('You have successfully exported').' '.$result_invoice['nbOrderOk'].' '.
                     $this->l('invoice(s) on').' '.$result_invoice['nbOrderTotal'].
                     $this->l(', press Start again for exporting next invoices').'</div>';
                 } else {
-                    $this->_html .= '<div class = "conf confirm"><img src= "../modules/prestashoptodolibarrpro/ok.gif" alt = "'.
+                    $this->_html .= '<div class = "conf confirm"><img src= "../img/admin/ok.gif" alt = "'.
                     $this->l('Ok').'" /> '.$result_invoice['nbOrderOk'].' '.
                     $this->l('invoice(s) on').' '.$result_invoice['nbOrderTotal'].' '.$this->l('exported').'</div>';
                 }
             } else {
-                $this->_html .= '<div class = "conf confirm"><img src= "../modules/prestashoptodolibarrpro/ko.gif" alt = "KO" /> '.
+                $this->_html .= '<div class = "conf confirm"><img src= "../img/admin/ko.gif" alt = "KO" /> '.
                 $this->l('something went wrong').' : '.
                 $result_invoice['reason'].'</div>';
             }
@@ -525,10 +525,10 @@ class PrestashopToDolibarrPro extends Module
             $resetinvoices = $this->resetInvoices();
 
             if ($resetinvoices) {
-                $this->_html .= '<div class = "conf confirm"><img src= "../modules/prestashoptodolibarrpro/ok.gif" alt = "OK" /> '.
+                $this->_html .= '<div class = "conf confirm"><img src= "../img/admin/ok.gif" alt = "OK" /> '.
                 $this->l('Reset on invoices done').'</div>';
             } else {
-                $this->_html .= '<div class = "conf confirm"><img src= "../modules/prestashoptodolibarrpro/ko.gif" alt = "KO" /> '.
+                $this->_html .= '<div class = "conf confirm"><img src= "../img/admin/ko.gif" alt = "KO" /> '.
                 $this->l('something went wrong').'</div>';
             }
         }
@@ -545,19 +545,19 @@ class PrestashopToDolibarrPro extends Module
             $this->logInFile('retour export commandes : '.print_r($result_order, true));
             if ($result_order['result'] == 'OK') {
                 if ($result_order['nbrMaxOrder']) {//pas totalement importé
-                    $this->_html .= '<div class = "conf confirm"><img src= "../modules/prestashoptodolibarrpro/ok.gif" alt = "'.
+                    $this->_html .= '<div class = "conf confirm"><img src= "../img/admin/ok.gif" alt = "'.
                     $this->l('Ok').'" /> '.
                     $this->l('You have successfully exported').' '.$result_order['nbOrderOk'].' '.
                     $this->l('order(s) on').' '.$result_order['nbOrderTotal'].
                     $this->l(', press Start again for exporting next orders').'</div>';
                 } else {
-                    $this->_html .= '<div class = "conf confirm"><img src= "../modules/prestashoptodolibarrpro/ok.gif" alt = "'.
+                    $this->_html .= '<div class = "conf confirm"><img src= "../img/admin/ok.gif" alt = "'.
                     $this->l('Ok').'" /> '.$result_order['nbOrderOk'].' '.
                     $this->l('order(s) on').' '.$result_order['nbOrderTotal'].' '.
                     $this->l('exported').'</div>';
                 }
             } else {
-                $this->_html .= '<div class = "conf confirm"><img src= "../modules/prestashoptodolibarrpro/ko.gif" alt = "KO" /> '.
+                $this->_html .= '<div class = "conf confirm"><img src= "../img/admin/ko.gif" alt = "KO" /> '.
                 $this->l('something went wrong').' : '.
                 $result_order['reason'].'</div>';
             }
@@ -570,10 +570,10 @@ class PrestashopToDolibarrPro extends Module
         if ($btn_reset_export_order) {
             $resetorders = $this->resetOrders();
             if ($resetorders) {
-                $this->_html .= '<div class = "conf confirm"><img src= "../modules/prestashoptodolibarrpro/ok.gif" alt = "OK" /> '.
+                $this->_html .= '<div class = "conf confirm"><img src= "../img/admin/ok.gif" alt = "OK" /> '.
                 $this->l('Reset on orders done').'</div>';
             } else {
-                $this->_html .= '<div class = "conf confirm"><img src= "../modules/prestashoptodolibarrpro/ko.gif" alt = "KO" /> '.
+                $this->_html .= '<div class = "conf confirm"><img src= "../img/admin/ko.gif" alt = "KO" /> '.
                 $this->l('something went wrong').'</div>';
             }
         }
@@ -586,11 +586,11 @@ class PrestashopToDolibarrPro extends Module
             $this->logInFile('--Export categories--');
             $result_category = $this->importCategories();
             if ($result_category['result']['result_code'] == 'OK') {
-                $this->_html .= '<div class = "conf confirm"><img src= "../modules/prestashoptodolibarrpro/ok.gif" alt = "'.
+                $this->_html .= '<div class = "conf confirm"><img src= "../img/admin/ok.gif" alt = "'.
                 $this->l('Ok').'" /> '.
                 $this->l('You have successfully exported your categories').'</div>';
             } else {
-                $this->_html .= '<div class = "conf confirm"><img src= "../modules/prestashoptodolibarrpro/ko.gif" alt = "KO" /> '.
+                $this->_html .= '<div class = "conf confirm"><img src= "../img/admin/ko.gif" alt = "KO" /> '.
                 $this->l('something went wrong').' : '.
                 $result_category['result']['result_label'].'</div>';
             }
@@ -652,7 +652,7 @@ class PrestashopToDolibarrPro extends Module
             if ($this->is_checked_synch_customer || $this->is_checked_synch_product ||
                 $this->is_checked_synch_invoice) {
                 if ($this->is_checked_synch_order || $this->is_checked_synch_category) {
-                    $this->_html .= '<div class = "conf confirm"><img src= "../modules/prestashoptodolibarrpro/ok.gif" alt = "" /> ';
+                    $this->_html .= '<div class = "conf confirm"><img src= "../img/admin/ok.gif" alt = "" /> ';
 
                     if ($this->is_checked_synch_customer) {
                         $this->_html .= '<br>'.$this->l('Customers are synchronised with Dolibarr');
@@ -709,7 +709,7 @@ class PrestashopToDolibarrPro extends Module
             'entity'=>''
         );
 
-        $soapclient1 = new p2dWebservices_client($ws_dol_url_category);
+        $soapclient1 = new nusoap_client($ws_dol_url_category);
         if ($soapclient1) {
             $soapclient1->soap_defencoding = 'UTF-8';
             $soapclient1->decodeUTF8(false);
@@ -1382,7 +1382,7 @@ class PrestashopToDolibarrPro extends Module
             $imageType = '-'.ImageType::getFormatedName('home');
             $image_path_hd = $image_path.$image_id.$imageType.'.jpg';
             $image_name = $image_id.$imageType.'.jpg';
-            $soapclient = new p2dWebservices_client('test');
+            $soapclient = new nusoap_client('test');
 
             $image_path_hd2 = str_replace('\\', '/', _PS_PROD_IMG_DIR_.$image_path_hd);
             if (($image_path_hd2 != '') && (file_exists($image_path_hd2))) {
@@ -1718,7 +1718,7 @@ class PrestashopToDolibarrPro extends Module
         $ns = 'http://www.Dolibarr.org/ns/';
         //$versionToReturn = '0';
 
-        $soapclient = new p2dWebservices_client($ws_dol_url);
+        $soapclient = new nusoap_client($ws_dol_url);
         if ($soapclient) {
             $soapclient->soap_defencoding = 'UTF-8';
             $soapclient->decodeUTF8(false);
@@ -1748,7 +1748,7 @@ class PrestashopToDolibarrPro extends Module
         $ws_method  = 'getThirdParty';
         $ns = 'http://www.Dolibarr.org/ns/';
 
-        $soapclient = new p2dWebservices_client($ws_dol_url);
+        $soapclient = new nusoap_client($ws_dol_url);
         if ($soapclient) {
             $soapclient->soap_defencoding = 'UTF-8';
             $soapclient->decodeUTF8(false);
@@ -1780,7 +1780,7 @@ class PrestashopToDolibarrPro extends Module
         $ws_method  = 'updateThirdParty';
         $ns = 'http://www.Dolibarr.org/ns/';
 
-        $soapclient = new p2dWebservices_client($ws_dol_url);
+        $soapclient = new nusoap_client($ws_dol_url);
         if ($soapclient) {
             $soapclient->soap_defencoding = 'UTF-8';
             $soapclient->decodeUTF8(false);
@@ -1811,7 +1811,7 @@ class PrestashopToDolibarrPro extends Module
         $ws_method  = 'createThirdParty';
         $ns = 'http://www.Dolibarr.org/ns/';
 
-        $soapclient = new p2dWebservices_client($ws_dol_url);
+        $soapclient = new nusoap_client($ws_dol_url);
         if ($soapclient) {
             $soapclient->soap_defencoding = 'UTF-8';
             $soapclient->decodeUTF8(false);
@@ -1851,7 +1851,7 @@ class PrestashopToDolibarrPro extends Module
         $ws_method  = 'createProductOrService';
         $ns = 'http://www.Dolibarr.org/ns/';
         
-        $soapclient = new p2dWebservices_client($ws_dol_url);
+        $soapclient = new nusoap_client($ws_dol_url);
         if ($soapclient) {
             $soapclient->soap_defencoding = 'UTF-8';
             $soapclient->decodeUTF8(false);
@@ -1889,7 +1889,7 @@ class PrestashopToDolibarrPro extends Module
         $ws_method  = 'updateProductOrService';
         $ns = 'http://www.Dolibarr.org/ns/';
 
-        $soapclient = new p2dWebservices_client($ws_dol_url);
+        $soapclient = new nusoap_client($ws_dol_url);
         if ($soapclient) {
             $soapclient->soap_defencoding = 'UTF-8';
             $soapclient->decodeUTF8(false);
@@ -1922,7 +1922,7 @@ class PrestashopToDolibarrPro extends Module
         $ws_method  = 'getProductOrService';
         $ns = 'http://www.Dolibarr.org/ns/';
 
-        $soapclient = new p2dWebservices_client($ws_dol_url);
+        $soapclient = new nusoap_client($ws_dol_url);
         if ($soapclient) {
             $soapclient->soap_defencoding = 'UTF-8';
             $soapclient->decodeUTF8(false);
@@ -1982,7 +1982,7 @@ class PrestashopToDolibarrPro extends Module
         $retour_dbl['result']['result_code'] = 'DBL';
 
         //on fait un get invoice pour voir si l'on met pas un doublon
-        $soapclient1 = new p2dWebservices_client($ws_dol_url_invoice);
+        $soapclient1 = new nusoap_client($ws_dol_url_invoice);
         if ($soapclient1) {
             $soapclient1->soap_defencoding = 'UTF-8';
             $soapclient1->decodeUTF8(false);
@@ -2121,7 +2121,7 @@ class PrestashopToDolibarrPro extends Module
             'lines'=>$lines
         );
 
-        $soapclient4 = new p2dWebservices_client($ws_dol_url_invoice);
+        $soapclient4 = new nusoap_client($ws_dol_url_invoice);
         if ($soapclient4) {
             $soapclient4->soap_defencoding = 'UTF-8';
             $soapclient4->decodeUTF8(false);
@@ -2177,7 +2177,7 @@ class PrestashopToDolibarrPro extends Module
         $retour_dbl['result']['result_code'] = 'DBL';
 
         //on fait un get order pour voir si l'on met pas un doublon
-        $soapclient1 = new p2dWebservices_client($ws_dol_url_order);
+        $soapclient1 = new nusoap_client($ws_dol_url_order);
         if ($soapclient1) {
             $soapclient1->soap_defencoding = 'UTF-8';
             $soapclient1->decodeUTF8(false);
@@ -2343,7 +2343,7 @@ class PrestashopToDolibarrPro extends Module
             'lines'=>$lines
             );
 
-            $soapclient4 = new p2dWebservices_client($ws_dol_url_order);
+            $soapclient4 = new nusoap_client($ws_dol_url_order);
             if ($soapclient4) {
                 $soapclient4->soap_defencoding = 'UTF-8';
                 $soapclient4->decodeUTF8(false);

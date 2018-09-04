@@ -1200,5 +1200,5 @@ function getImportedCateg($import_key)
 }
 
 // Return the results.
-$server->service($HTTP_RAW_POST_DATA);
+$server->service(file_get_contents("php://input"));
 

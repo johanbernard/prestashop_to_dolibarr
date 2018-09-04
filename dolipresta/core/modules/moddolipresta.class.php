@@ -29,7 +29,7 @@ class moddolipresta extends DolibarrModules
 		$this->family = "other";
 		$this->name = preg_replace('/^mod/i','',get_class($this));
 		$this->description = "dolipresta link prestashop with dolibarr in real time";
-		$this->version = '7.0.1';
+		$this->version = '8.0.1';
 		$this->const_name = 'MAIN_MODULE_'.strtoupper($this->name);
 		$this->special = 1;
 		$this->picto='generic';
