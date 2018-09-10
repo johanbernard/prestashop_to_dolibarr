@@ -1,6 +1,25 @@
+--Prestashop to domlibarr--
+
+Synchronise Prestashop to Dolibarr.
+
+his multi module (one Prestashop and one Dolibarr) lets you synchronise all of your PrestaShop stores with Dolibarr.
+
+It allows synchronization of:
+
+    1. Your customers, intelligently sorted prospects or customers in Dolibarr.
+    2. Your categories.
+    3. Your products, stored in their categories with their picture, barcode and inventory sorted according to your warehouse.
+    4. Your orders with repercussion of internal links to your internal products and your internal customers into Dolibarr.
+    5. Bills with also impact internal links to your products and your customers into Dolibarr.
+    6. Orders statuts update from dolibarr to prestashop and from Prestashop to Dolibarr it's an exclusivity of our module
+The module works by communicating with Dolibarr by imporved web-services. So you can have your PrestaShop and your Dolibarr on two different machines.
+
+The Prestashop to Dolibarr Pro module is the only one to synchronize big data. This, with an auto-stop technology and intelligent recovery that will stop communicating himself before time-out of the server. And, with our technology you can sync all your data without server crashes and can catch without duplicates up as we can see in other similar modules. Moreover, when a phase shift occurs, a notification is inserted into PrestaShop.
+
+
+--Installation--
 
 --FRENCH--
-Marche à suivre :
 
 Cote Prestashop :
 1. Desinstaller toute ancienne version de "Prestashop to Dolibarr"
@@ -21,14 +40,13 @@ Cote Dolibarr :
 
 8. Configurer la cle qui sera utilisee dans les Webservices dans la fenetre de configuration de "dolipresta" (symbole "outils" a droite, notez la : elle sera parametree dans Prestashop)
 
-
 NB : Si vous voulez exporter le stock des produits de Prestashop vers Dolibarr, n'oubliez pas de configurer un entrepot dans Dolibarr et de reporter son nom dans les parametres d'exportation du module "Prestashop to Dolibarr"
 
 
 --ENGLISH--
-Installation:
 
 Prestashop side:
+
 1. Uninstall any old version of "Prestashop to Dolibarr"
 
 2. Put the sources in a prestashoptodolibarrpro directory and zip the dolipresta directory
@@ -39,6 +57,7 @@ Prestashop side:
 
 
 Dolibarr side:
+
 5. Download the module "dolipresta" via the link provided in the module Prestashop To Dolibarr
 
 6. Unzip the file "dolipresta.zip" into the directory "htdocs /" of your Dolibarr.
@@ -50,3 +69,6 @@ Dolibarr side:
 
 NB: If you want to export the Prestashop products' stock to Dolibarr, do not forget to set up a warehouse in Dolibarr and transfer its name to the export parameters of the "Prestashop to Dolibarr" module
 
+
+
+WIKI : https://wiki.dolibarr.org/index.php/Module_PrestaShop_To_Dolibarr
