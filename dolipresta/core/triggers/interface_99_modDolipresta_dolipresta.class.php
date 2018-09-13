@@ -13,7 +13,7 @@
 * @version   RC2
 */
 require_once DOL_DOCUMENT_ROOT.'/core/triggers/dolibarrtriggers.class.php';
-require_once(DOL_DOCUMENT_ROOT.'/dolipresta/lib/PSWebServiceLibrary.php');
+dol_include_once("dolipresta/lib/PSWebServiceLibrary.php");
 
 
 /**
