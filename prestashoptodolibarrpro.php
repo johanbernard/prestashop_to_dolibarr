@@ -1,6 +1,6 @@
 <?php
 /**
-* 2015 PJ CONSEIL
+* 2018 PJ CONSEIL
 *
 * NOTICE OF LICENSE
 *
@@ -52,7 +52,7 @@ class PrestashopToDolibarrPro extends Module
     {
         $this->name = 'prestashoptodolibarrpro';
         $this->tab = 'migration_tools';
-        $this->version = '1.1.5';
+        $this->version = '1.8';
         $this->author = 'PJ Conseil';
         $this->module_key = 'a9616fc7465750635d2cc4293269cb83';
         $this->need_instance = 0;
