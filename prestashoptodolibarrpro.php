@@ -156,9 +156,11 @@ class PrestashopToDolibarrPro extends Module
             }
         }
 
-        if (!parent::install() || !$this->registerHook('createAccount') || !$this->registerHook('orderConfirmation')) {
+        if (!parent::install() || !$this->registerHook('createAccount') || !$this->registerHook('actionValidateOrder')) {
             return false;
         }
+		
+		
         if (!$this->registerHook('updateproduct') || !$this->registerHook('addproduct') ||
             !$this->registerHook('updateOrderStatus')) {
             return false;
@@ -1533,7 +1535,7 @@ class PrestashopToDolibarrPro extends Module
                     break;
                 }
             }
-        } else {    //hookorderconfirmation
+        } else {    //hookDisplayOrderConfirmation
             $this->logInFile('---> enrichOrderAndSend ');
             $enrich_retour = $this->enrichOrderAndSend($facture_ec, $tmsp_start, $is_commande, $is_facture);
             $this->logInFile('---> retour enrichissement order 2 : '.print_r($enrich_retour, true));
@@ -2551,16 +2553,15 @@ class PrestashopToDolibarrPro extends Module
     /**
     * hook confirmation commande pour facturation
     */
-
-    public function hookOrderConfirmation($params)
+    public function hookActionValidateOrder($params)
     {
-        $this->logInFile('--hookOrderConfirmation--');
+        $this->logInFile('--hookActionValidateOrder--');
         $tmsp_start = time();
-        $order_id = $params['objOrder']->id;
-        $this->logInFile('hookOrderConfirmation : '.print_r($params['objOrder'], true));
+        $order_id = $params['order']->id;
+        $this->logInFile('hookActionValidateOrder : '.print_r($params['order'], true));
         if (($this->is_checked_synch_invoice == 'true') || ($this->is_checked_synch_order == 'true')) {
             $result = $this->importFacturesOrCommandes(
-                $params['objOrder'],
+                $params['order'],
                 $tmsp_start,
                 $this->is_checked_synch_order,
                 $this->is_checked_synch_invoice
