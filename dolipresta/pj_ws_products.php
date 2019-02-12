@@ -855,9 +855,6 @@ function updateProductOrService($authentication,$product)
 			//ToDo: multi Image
 			//by @wdammak
 			$product_id = $product['id'];
-			$newstdproduct = new stdClass();
-			$newstdproduct = (object)$product;
-			dol_syslog("id: ".$newstdproduct->id);
 			$imagesB64 = $product['images']['image']['photo'];
 			$imagesName = $product['images']['image']['photo_vignette'];
 			ecrireImageProduit((object)$product, $imagesB64, $imagesName, $product['ref']);
