@@ -42,7 +42,8 @@ require_once(DOL_DOCUMENT_ROOT."/categories/class/categorie.class.php");
 function ecrireImageProduit($product, $imagesB64, $imagesName, $productRef) 
 {
 	global $conf;
-	if ($product_id != "" && $imagesB64 != "" && $imagesName != "") {
+		
+	if ($product->id != "" && $imagesB64 != "" && $imagesName != "") {
 		/* 
 		creation du chemin
 		*/
@@ -643,7 +644,7 @@ function createProductOrService($authentication,$product)
 			$product_id = $newobject->id;			
 			$imagesB64 = $product['images']['image']['photo'];
 			$imagesName = $product['images']['image']['photo_vignette'];
-			ecrireImageProduit($product_id, $imagesB64, $imagesName, $product['ref']);
+			ecrireImageProduit($newobject, $imagesB64, $imagesName, $product['ref']);
 			ecrireImageProduitOld($product_id, $imagesB64, $imagesName, $product['ref']);
         }
         else
@@ -851,10 +852,12 @@ function updateProductOrService($authentication,$product)
 			/*
 			* update de l'image
 			*/
-			$product_id = $product['id'];			
+			//ToDo: multi Image
+			//by @wdammak
+			$product_id = $product['id'];
 			$imagesB64 = $product['images']['image']['photo'];
 			$imagesName = $product['images']['image']['photo_vignette'];
-			ecrireImageProduit($product_id, $imagesB64, $imagesName, $product['ref']);
+			ecrireImageProduit((object)$product, $imagesB64, $imagesName, $product['ref']);
             $objectresp=array('result'=>array('result_code'=>'OK', 'result_label'=>''),'id'=>$newobject->id,'ref'=>$newobject->ref);
         }
         else
