@@ -1230,7 +1230,7 @@ class PrestashopToDolibarrPro extends Module
 
                 $code_retour = '';
                 if ($product_ref_interne['id_ext_doli']) {   //update product
-                    $this->logInFile('--- MAJ PRODUIT ---');
+                    $this->logInFile('--- MAJ PRODUIT1 ---');
                     $enrich = $this->enrichProducts(
                         $product_ref_interne['id_ext_doli'],
                         $product_ref,
@@ -1255,7 +1255,7 @@ class PrestashopToDolibarrPro extends Module
                         $code_retour = $wsretour['result']['result_code'];
                     }
                     if ($code_retour == 'OK') { //update product
-                        $this->logInFile('--- MAJ PRODUIT ---');
+                        $this->logInFile('--- MAJ PRODUIT2 ---');
                         $enrich = $this->enrichProducts(
                             $wsretour['product']['id'],
                             $product_ref,
@@ -1372,46 +1372,6 @@ class PrestashopToDolibarrPro extends Module
         }
         $tva_tx = $get_tva_tx['rate'];
 
-        //recuperation de l'image
-        $image_product = Image::getImages($default_language, $id_product, $id_product_attribute);
-        if (array_key_exists(0, $image_product)) {
-            $image_id = $image_product[0]['id_image'];
-        } else {
-            $image_id = $this->getIdImage($id_product);
-        }
-
-        if ($image_id != '') {
-            
-			if ($image_id < 10)
-				$image_path = $image_id.'/';
-			else if ($image_id >= 10 && $image_id < 100)
-				$image_path = $image_id[0].'/'.$image_id[1].'/';
-			else if ($image_id >= 100 && $image_id < 1000)
-				$image_path = $image_id[0].'/'.$image_id[1].'/'.$image_id[2].'/';
-			else if ($image_id >= 1000 && $image_id < 10000)
-				$image_path = $image_id[0].'/'.$image_id[1].'/'.$image_id[2].'/'.$image_id[3].'/';
-			
-            $imageType = '-'.ImageType::getFormatedName('home');
-            $image_path_hd = $image_path.$image_id.$imageType.'.jpg';
-			
-            $image_name = $image_id.$imageType.'.jpg';
-            $soapclient = new nusoap_client('test');
-
-            $image_path_hd2 = str_replace('\\', '/', _PS_PROD_IMG_DIR_.$image_path_hd);
-            if (($image_path_hd2 != '') && (file_exists($image_path_hd2))) {
-                $image_b64 = base64_encode(Tools::file_get_contents($image_path_hd2));
-            } else {
-                $image_b64 = '';
-            }
-
-            $this->logInFile(
-                "->image : \nfor product name : ".
-                $product_name."\n image disque dur = $image_path_hd2 \n & image name : ".$image_name
-            );
-        } else {
-            $this->logInFile("->image : Pas d'image pour ce produit");
-        }
-
         $product_ref = $this->noSpecialCharacterV3($product_ref);
         $description_short = $this->noSpecialCharacterV3($description_short);
         $id_ext_doli = $this->noSpecialCharacterV3($id_ext_doli);
@@ -1452,10 +1412,67 @@ class PrestashopToDolibarrPro extends Module
         }
         $enrich['pmp'] = '';
         $enrich['canvas'] = '';
-        $enrich['images']['image']['photo'] = $image_b64;
-        $enrich['images']['image']['photo_vignette'] = $image_name;
-        $enrich['images']['image']['imgWidth'] = '250';
-        $enrich['images']['image']['imgHeight'] = '250';
+		
+		//ToDo: Multi Image
+		//by @wdammak
+		
+		//recuperation de l'image
+        $image_product = Image::getImages($default_language, $id_product, $id_product_attribute);
+		
+		//ToDo: Ajouter toutes les images vers dolibarr
+		//by @wdammak
+		
+		//prepare array
+		if (!array_key_exists(0, $image_product))
+		{
+			$image_id = $this->getIdImage($id_product);
+			$image_product = array('id_image'=> $image_id);
+		}
+		
+		//multi image
+		foreach($image_product as $key => $curimage)
+		{
+			$image_id = $curimage['id_image'];
+			if ($image_id != '')
+			{
+				if ($image_id < 10)
+					$image_path = $image_id.'/';
+				else if ($image_id >= 10 && $image_id < 100)
+					$image_path = $image_id[0].'/'.$image_id[1].'/';
+				else if ($image_id >= 100 && $image_id < 1000)
+					$image_path = $image_id[0].'/'.$image_id[1].'/'.$image_id[2].'/';
+				else if ($image_id >= 1000 && $image_id < 10000)
+					$image_path = $image_id[0].'/'.$image_id[1].'/'.$image_id[2].'/'.$image_id[3].'/';
+				
+				$imageType = '-'.ImageType::getFormatedName('home');
+				$image_path_hd = $image_path.$image_id.$imageType.'.jpg';
+				
+				$image_name = $image_id.$imageType.'.jpg';
+				$soapclient = new nusoap_client('test');
+
+				$image_path_hd2 = str_replace('\\', '/', _PS_PROD_IMG_DIR_.$image_path_hd);
+				if (($image_path_hd2 != '') && (file_exists($image_path_hd2))) {
+					$image_b64 = base64_encode(Tools::file_get_contents($image_path_hd2));
+				} else {
+					$image_b64 = '';
+				}
+
+				$this->logInFile(
+					"->image : \nfor product name : ".
+					$product_name."\n image disque dur = $image_path_hd2 \n & image name : ".$image_name
+				);
+				
+				$enrich['images']['image'][] = array(
+												'id_image'=> $image_id,
+												'photo'=> $image_b64,
+												'photo_vignette'=> $image_name,
+												'imgWidth'=> '250',
+												'imgHeight'=> '250',
+												);
+			} else {
+				$this->logInFile("->image : Pas d'image pour ce produit");
+			}
+		}
 
         //récupération des catégories du produits
         if ($this->is_checked_synch_category == 'true') {
