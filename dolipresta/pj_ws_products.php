@@ -39,7 +39,7 @@ require_once(DOL_DOCUMENT_ROOT."/categories/class/categorie.class.php");
 /**
 * Ecrit l'image du produit sur le disque
 */
-function ecrireImageProduit($product, $imagesB64, $imagesName, $productRef) 
+function ecrireImageProduit($product, $imagesB64, $imagesName, $productRef, $index=0) 
 {
 	global $conf;
 		
@@ -54,9 +54,12 @@ function ecrireImageProduit($product, $imagesB64, $imagesName, $productRef)
 			$pdir .= $productRef.'/';
 
 		$imgPath = $sdir."/".$pdir;
+		
+		if (!is_dir($imgPath)) mkdir($imgPath, 0777, true);
 
 		//on efface tout ce qu'il y a dans le répertoire en cas d'update
-		if (is_dir($imgPath)) {
+		//@wdammak: Add cas Multi-images
+		if (is_dir($imgPath) && $index==0) {
 			if ($dh = opendir($imgPath)) {
 				while (($file = readdir($dh)) !== false) {
 					if($file != '.' && $file != '..'){
@@ -66,7 +69,6 @@ function ecrireImageProduit($product, $imagesB64, $imagesName, $productRef)
 				closedir($dh);
 			}
 		}
-		else  mkdir($imgPath, 0777, true);
 		
 		/*
 		ecriture du fichier
@@ -645,7 +647,7 @@ function createProductOrService($authentication,$product)
 			$imagesB64 = $product['images']['image']['photo'];
 			$imagesName = $product['images']['image']['photo_vignette'];
 			ecrireImageProduit($newobject, $imagesB64, $imagesName, $product['ref']);
-			ecrireImageProduitOld($product_id, $imagesB64, $imagesName, $product['ref']);
+			//ecrireImageProduitOld($product_id, $imagesB64, $imagesName, $product['ref']);
         }
         else
         {
@@ -855,9 +857,13 @@ function updateProductOrService($authentication,$product)
 			//ToDo: multi Image
 			//by @wdammak
 			$product_id = $product['id'];
-			$imagesB64 = $product['images']['image']['photo'];
-			$imagesName = $product['images']['image']['photo_vignette'];
-			ecrireImageProduit((object)$product, $imagesB64, $imagesName, $product['ref']);
+			foreach($product['images']['image'] as $key => $curimage)
+			{
+				$imagesB64 = $curimage['photo'];
+				$imagesName = $curimage['photo_vignette'];
+				ecrireImageProduit((object)$product, $imagesB64, $imagesName, $product['ref'],$key);
+			}
+			
             $objectresp=array('result'=>array('result_code'=>'OK', 'result_label'=>''),'id'=>$newobject->id,'ref'=>$newobject->ref);
         }
         else
