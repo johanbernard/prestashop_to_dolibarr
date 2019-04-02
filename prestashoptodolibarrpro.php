@@ -1,6 +1,6 @@
 <?php
 /**
-* 2018 PJ CONSEIL
+* 2019 PJ CONSEIL
 *
 * NOTICE OF LICENSE
 *
@@ -15,7 +15,7 @@
 
 class PrestashopToDolibarrPro extends Module
 {
-    public $debug_mode = true;
+    public $debug_mode = false;
     /**temps maximum en seconde pour exporter*/
     public $nbr_max_sec_export = 24;
     private $id_customer = 0;
@@ -52,7 +52,7 @@ class PrestashopToDolibarrPro extends Module
     {
         $this->name = 'prestashoptodolibarrpro';
         $this->tab = 'migration_tools';
-        $this->version = '1.8';
+        $this->version = '1.9';
         $this->author = 'PJ Conseil';
         $this->module_key = 'a9616fc7465750635d2cc4293269cb83';
         $this->need_instance = 0;
