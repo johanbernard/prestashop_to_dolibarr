@@ -2,7 +2,7 @@
 <module>
     <name>prestashoptodolibarrpro</name>
     <displayName><![CDATA[Prestashop to Dolibarr PRO]]></displayName>
-    <version><![CDATA[1.8]]></version>
+    <version><![CDATA[1.9]]></version>
     <description><![CDATA[Importe et relie en temps r&eacute;el Prestashop et Dolibarr]]></description>
     <author><![CDATA[PJ Conseil]]></author>
     <tab><![CDATA[migration_tools]]></tab>
