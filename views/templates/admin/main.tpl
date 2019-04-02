@@ -15,11 +15,12 @@
 	<li id="menuTab3" class="menuTabButton">&nbsp;{l s='Export Settings' mod='prestashoptodolibarrpro'}&nbsp;</li>
 	<li id="menuTab4" class="menuTabButton">&nbsp;{l s='Export Prestashop data to Dolibarr' mod='prestashoptodolibarrpro'}&nbsp;</li>
 </ul>
-<div id="tabList">
+<div id="tabList">	
 	<div id="menuTab1Sheet" class="tabItem selected">
 		<form action = "{if {$smarty.server.REQUEST_URI|escape:'htmlall':'UTF-8'}|strstr:"&id_tab"|escape:'htmlall':'UTF-8'}{{$smarty.server.REQUEST_URI|escape:'htmlall':'UTF-8'}|strstr:"&id_tab":true|escape:'htmlall':'UTF-8'}{else}{$smarty.server.REQUEST_URI|escape:'htmlall':'UTF-8'}{/if}&id_tab=1" method= "post">
-			<img src= "../modules/prestashoptodolibarrpro/views/img/dolibarr.jpg" style = "float:left; margin-right:15px;"><br><br><br>
-			<b>{l s='This module synchronises Prestashop with dolibarr in real time.' mod='prestashoptodolibarrpro'}</b><br><br><br>
+			<img src= "../modules/prestashoptodolibarrpro/views/img/dolibarr.jpg" style = "float:left; margin-right:15px;">
+			<b>{l s='This module synchronises Prestashop with dolibarr in real time.' mod='prestashoptodolibarrpro'}</b>
+			<br><br><br>
 			{l s='You can export existing data at first use of the module or for catching up. After that, each data will be updated in real time to Dolibarr.' mod='prestashoptodolibarrpro'}<br>
 			{l s='It communicates with dolibarr thanks to webservices technologie.' mod='prestashoptodolibarrpro'}<br>
 			{l s='Then, you must enable "dolipresta" module into Dolibarr to make this module works :' mod='prestashoptodolibarrpro'}<br><br>
@@ -29,6 +30,12 @@
 			{l s='4/ Go to the configuration (by clicking on the tools icon)' mod='prestashoptodolibarrpro'}<br>
 			{l s='5/ Set the webservices by entering the key you want and save.' mod='prestashoptodolibarrpro'}<br>
 			<br><br><br>
+			<table>
+			<tr><td>{l s='If you have some questions or problems, the community can helps you here : ' mod='prestashoptodolibarrpro'}</td><td> &nbsp;&nbsp;<a href='https://www.dolibarr.fr/forum/505-e-commerce/62597-prestashop-to-dolibarr'><strong><u><span style = "color:#009e00;"> >> QUESTIONS & INFO</span></u></strong></a></td></tr>
+			<tr><td>{l s='If you want to participate to the developpement of this module you can do it here : ' mod='prestashoptodolibarrpro'}</td><td> &nbsp;&nbsp;<a href='https://github.com/johanbernard/prestashop_to_dolibarr'><strong><u><span style = "color:#ff8300;"> >> GITHUB </span></u></strong></a></td></tr>
+			<tr><td>{l s='Then If you want to donate for the developpers you can do it here : ' mod='prestashoptodolibarrpro'}</td><td> &nbsp;&nbsp;<a href='https://www.paypal.com/pools/c/8cV83UMDH5/guest/amount'><strong><u><span style = "color:#0064ff;"> >> DONATION</span></u></strong></a></td></tr>
+			</table>
+			{l s='Thank you ! ' mod='prestashoptodolibarrpro'}
 		</form>
 	</div>
 	<div id="menuTab2Sheet" class="tabItem">
