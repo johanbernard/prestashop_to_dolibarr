@@ -58,6 +58,10 @@ $_MODULE['<{prestashoptodolibarrpro}prestashop>main_348acdebddbafc089fc26227a9ac
 $_MODULE['<{prestashoptodolibarrpro}prestashop>main_3a24cfa576659ac47c2465b273d8749f'] = '3/ Activez le module dolipresta';
 $_MODULE['<{prestashoptodolibarrpro}prestashop>main_f00400cc42312cfc5bcf46d2d77ce38d'] = '4/ Allez dans la configuration (en cliquant sur l\'icône outils)';
 $_MODULE['<{prestashoptodolibarrpro}prestashop>main_9dae65db0ec0f497fd29feefd9182ab1'] = '5/ Renseignez et enregistrez la clé pour utiliser les webservices';
+$_MODULE['<{prestashoptodolibarrpro}prestashop>main_599e5213b30da3925dee34af75aa69bd'] = 'Si vous avez des questions ou des infos à partager vous pouvez le faire ici :';
+$_MODULE['<{prestashoptodolibarrpro}prestashop>main_8989248db87e6d5e9358fe8d694be12a'] = 'Si vous voulez participer au développement du module voici le github';
+$_MODULE['<{prestashoptodolibarrpro}prestashop>main_f306d68dd4bab48f3df14c841bfb2dd2'] = 'Enfin si vous voulez faire une donation pour soutenir le projet vous pouvez le faire ici';
+$_MODULE['<{prestashoptodolibarrpro}prestashop>main_b1f9d4eefddc796339b79bc9d5f87669'] = 'Merci !';
 $_MODULE['<{prestashoptodolibarrpro}prestashop>main_29e0429e07365090792d38fad05ff54e'] = 'Veuillez renseigner les informations nécessaires à la communication avec les webservices de Dolibarr';
 $_MODULE['<{prestashoptodolibarrpro}prestashop>main_c107e17bd8b8fb31428ed45fa73c6160'] = 'Dolibarr url*';
 $_MODULE['<{prestashoptodolibarrpro}prestashop>main_5689f7ee80213ba533d87ce64876407e'] = 'exemple : http://your_host/dolibarr/htdocs/';
