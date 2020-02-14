@@ -3013,7 +3013,7 @@ class PrestashopToDolibarrPro extends Module
     }
 
     /**nettoyage array categories*/
-    private function cleanCategory($cat_tab, $result = '')
+    private function cleanCategory($cat_tab, $result = null)
     {
         //if ($cat_tab['infos'])
         if (array_key_exists('infos', $cat_tab) == true) {
