@@ -35,7 +35,7 @@ if (! $user->admin)
 
 
 //sauvegarde case a cocher
-if ($_GET[upd] == 1) {
+if (GETPOST("upd") == 1) {
 	$SYNCH_STOCK = GETPOST("SYNCH_STOCK");
 	$SYNCH_ORDER = GETPOST("SYNCH_ORDER");
 	$db->begin();
