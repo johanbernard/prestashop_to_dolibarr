@@ -11,7 +11,9 @@
 * @version RC2
 */
 if (! defined("NOCSRFCHECK"))    define("NOCSRFCHECK",'1');
-ini_set('display_errors','Off');
+if (! defined("IS_A_WEBSERVICE_CALL_FROM_PRESTASHOP"))    define("IS_A_WEBSERVICE_CALL_FROM_PRESTASHOP",'1');
+
+//ini_set('display_errors','Off');
 
 
 // Load Dolibarr environment
@@ -621,7 +623,7 @@ function updateThirdParty($authentication,$thirdparty)
 			}
 		}
 
-		if ((! $error) && ($objectfound))
+		if (($objectfound) && (! $error))
 		{
 			$db->commit();
 			$objectresp=array(
@@ -629,16 +631,19 @@ function updateThirdParty($authentication,$thirdparty)
 					'id'=>$object->id
 			);
 		}
-		elseif ($objectfound)
+		elseif (!$objectfound)
 		{
+			$error++;
+			$errorcode='NOT_FOUND';
+			$errorlabel='Thirdparty id='.$thirdparty['id'].' cannot be found';
+			
+		} else { // so error on update
+			
 			$db->rollback();
 			$error++;
 			$errorcode='KO';
 			$errorlabel=$object->error;
-		} else {
-			$error++;
-			$errorcode='NOT_FOUND';
-			$errorlabel='Thirdparty id='.$thirdparty['id'].' cannot be found';
+
 		}
 	}
 

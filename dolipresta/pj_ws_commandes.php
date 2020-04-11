@@ -11,6 +11,7 @@
 * @version RC2
 */
 if (! defined("NOCSRFCHECK"))    define("NOCSRFCHECK",'1');
+if (! defined("IS_A_WEBSERVICE_CALL_FROM_PRESTASHOP"))    define("IS_A_WEBSERVICE_CALL_FROM_PRESTASHOP",'1');
 
 set_include_path($_SERVER['DOCUMENT_ROOT'].'/htdocs');
 
@@ -31,7 +32,7 @@ require_once NUSOAP_PATH.'/nusoap.php';        // Include SOAP
 require_once DOL_DOCUMENT_ROOT.'/core/lib/ws.lib.php';
 require_once DOL_DOCUMENT_ROOT.'/core/class/extrafields.class.php';
 
-require_once(DOL_DOCUMENT_ROOT."/commande/class/commande.class.php");
+require_once(DOL_DOCUMENT_ROOT.'/commande/class/commande.class.php');
 
 
 dol_syslog("Call Dolibarr webservices interfaces");
@@ -56,6 +57,7 @@ $ns='http://www.dolibarr.org/ns/';
 $server->configureWSDL('WebServicesDolibarrOrder',$ns);
 $server->wsdl->schemaTargetNamespace=$ns;
 
+//echo "Yeaahhhh";$server->service(file_get_contents("php://input"));die();
 
 // Define WSDL Authentication object
 $server->wsdl->addComplexType(
@@ -352,7 +354,7 @@ $server->register(
  * Get order from id, ref or ref_ext.
  *
  * @param	array		$authentication		Array of authentication information
- * @param	int			$id					Id
+ * @param	int			$id					Rowid
  * @param	string		$ref				Ref
  * @param	string		$ref_ext			Ref_ext
  * @return	array							Array result
@@ -387,7 +389,7 @@ function getOrder($authentication,$id='',$ref='',$ref_ext='')
 
 		if ($fuser->rights->commande->lire)
 		{
-			$order=new Commande($db);
+			$order=new Commande($db); 
 			$result=$order->fetch($id,$ref,$ref_ext);
 			if ($result > 0)
 			{
@@ -676,8 +678,8 @@ function createOrder($authentication,$order)
 
 	$now=dol_now();
 
-	dol_syslog("Function: createOrder login=".$authentication['login']." socid :".$order['socid']);
-
+	dol_syslog("Function: createOrder login=".$authentication['login']." socid :".$order['thirdparty_id']);
+	
 	if ($authentication['entity']) $conf->entity=$authentication['entity'];
 
 	// Init and check authentication
@@ -687,8 +689,6 @@ function createOrder($authentication,$order)
 	$fuser=check_authentication($authentication,$error,$errorcode,$errorlabel);
 
 	// Check parameters
-
-
 	if (! $error)
 	{
 		$newobject=new Commande($db);
@@ -717,6 +717,7 @@ function createOrder($authentication,$order)
 		// fetch optionals attributes and labels
 		$extrafields=new ExtraFields($db);
 		$extralabels=$extrafields->fetch_name_optionals_label('commandet',true);
+
 		foreach($extrafields->attribute_label as $key=>$label)
 		{
 			$key='options_'.$key;
@@ -764,6 +765,7 @@ function createOrder($authentication,$order)
 		dol_syslog("Webservice server_order:: order creation start", LOG_DEBUG);
 		$result=$newobject->create($fuser);
 		dol_syslog('Webservice server_order:: order creation done with $result='.$result, LOG_DEBUG);
+		
 		if ($result < 0)
 		{
 			dol_syslog("Webservice server_order:: order creation failed", LOG_ERR);
@@ -811,7 +813,6 @@ function createOrder($authentication,$order)
 				$errorlabel=$newobject->error;
 			}
 		}
-		
 		//gestion des adresses factu et livraison
 		if (!$error) {
 			//delivery address
@@ -835,8 +836,8 @@ function createOrder($authentication,$order)
 					$newobject->add_contact($resultg, 100, $source='external',$notrigger=0);
 				}
 			}
+		}else{
 		}
-
 		if ($result >= 0)
 		{
 			dol_syslog("Webservice server_order:: order creation & validation succeeded, commit", LOG_DEBUG);
