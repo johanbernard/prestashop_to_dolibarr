@@ -331,7 +331,7 @@ print $langs->trans("dolipresta@title")."
 function getPrestashopOrderStates($urlBoutique, $cleWS, $db, $langs) {
 	try {
 		$webService = new PrestaShopWebservice($urlBoutique, $cleWS, false);
-		$url = $urlBoutique.'api/order_states?display=%5Bid%2C%20name%5D';
+		$url = $urlBoutique.'api/order_states?display=%5Bid%2C%20name%5D&sort=%5Bid_ASC%5D';
 
 		$xmlProd = $webService->get(array('url' => $url))->order_states->order_state;
 
