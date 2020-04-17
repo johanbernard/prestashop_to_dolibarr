@@ -663,7 +663,7 @@ function createProductOrService($authentication,$product)
 function updateProductOrService($authentication,$product)
 {
     global $db,$conf,$langs;
-
+    
     $now=dol_now();
 
     dol_syslog("Function: updateProductOrService old login=".$authentication['login']);

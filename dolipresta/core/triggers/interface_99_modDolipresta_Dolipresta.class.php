@@ -12,14 +12,14 @@
 * @license   NoLicence
 * @version   RC2
 */
+
 require_once DOL_DOCUMENT_ROOT.'/core/triggers/dolibarrtriggers.class.php';
 dol_include_once("dolipresta/lib/PSWebServiceLibrary.php");
-
 
 /**
  *  Class of triggers for dolipresta module
  */
-class InterfaceDolipresta extends DolibarrTriggers
+class InterfaceDolipresta //extends DolibarrTriggers
 {
 
 	public $family = 'dolipresta';
@@ -27,9 +27,30 @@ class InterfaceDolipresta extends DolibarrTriggers
 	public $description = "Triggers stock modification and orders status modification";
 	public $version = '3.8.1';
 
+    /**
+     * @var DoliDB Database handler.
+     */
+    public $db;
+
+    /**
+     *   Constructor
+     *
+     *   @param DoliDB $db Database handler
+     */
+    public function __construct($db)
+    {
+        $this->db = $db;
+        
+        $this->name = preg_replace('/^Interface/i', '', get_class($this));
+	    $this->family = 'dolipresta';
+        $this->description = "Triggers of the module Dolipresta";
+        $this->version = 'dolibarr'; // 'development', 'experimental', 'dolibarr' or version
+        $this->picto = 'dolipresta@dolipresta';
+    }
+
 	/**
      * Function called when a Dolibarrr business event is done.
-	 * All functions "runTrigger" are triggered if file is inside directory htdocs/core/triggers or htdocs/module/code/triggers (and declared)
+	 * All functions "run_trigger" are triggered if file is inside directory htdocs/core/triggers or htdocs/module/code/triggers (and declared)
      *
      * @param string		$action		Event action code
      * @param Object		$object     Object concerned. Some context information may also be provided into array property object->context.
@@ -38,6 +59,7 @@ class InterfaceDolipresta extends DolibarrTriggers
      * @param conf		    $conf       Object conf
      * @return int         				<0 if KO, 0 if no triggered ran, >0 if OK
      */
+    //public function run_trigger($action, $object, User $user, Translate $langs, Conf $conf)
     public function runTrigger($action, $object, User $user, Translate $langs, Conf $conf)
     {
 		// Put here code you want to execute when a Dolibarr business events occurs.
@@ -109,7 +131,9 @@ class InterfaceDolipresta extends DolibarrTriggers
 		    case 'ORDER_CLASSIFY_BILLED':		// Traitée
 			case 'ORDER_CLOSE':					// Délivrée
 			case 'SHIPPING_CREATE':				// En cours de traitement
-				$this->synchOrderStatus($action, $object);
+				if (!defined("IS_A_WEBSERVICE_CALL_FROM_PRESTASHOP")){
+					$this->synchOrderStatus($action, $object);
+				}
 				break;
 		    //case 'LINEORDER_INSERT':
 		    //case 'LINEORDER_UPDATE':
@@ -229,7 +253,12 @@ class InterfaceDolipresta extends DolibarrTriggers
 		    case 'CATEGORY_CREATE':
 		    case 'CATEGORY_MODIFY':
 		    case 'CATEGORY_DELETE':
+		    */
+		    case 'CATEGORY_MODIFY':
+				$this->syncCategory($object);
+				break;
 
+			/*
 			// Projects
 		    case 'PROJECT_CREATE':
 		    case 'PROJECT_MODIFY':
@@ -310,7 +339,7 @@ class InterfaceDolipresta extends DolibarrTriggers
 			return -1;
 		}
 	}
-	
+
 	/**
 	* move de x le stock d'un produit ou d'un attribut
 	*/
@@ -390,6 +419,113 @@ class InterfaceDolipresta extends DolibarrTriggers
 		return Array('ref_ext'=>$ref_ext, 'reel'=>$reel);
 	}
 	
+	/*
+	 * Synchronize a category after be modified on Dolibarr
+	 */
+	function syncCategory($object) {
+		global $conf;
+		
+		$import_key = $this->getCategoryImportKey($object->id);
+		if (empty($import_key)) return 0;
+		
+		$presta_category_id = intval(substr($import_key,3)); // quit the prefix: SHP00000003 -> 3
+		if (!is_numeric($presta_category_id) || $presta_category_id == 0) return 0;
+		
+		$trigram = substr($import_key,0,3); // SHP00000003 -> SHP
+		$error = 0; // Error counter
+		
+		$query = "SELECT url, wskey FROM ".MAIN_DB_PREFIX."dolipresta_wsurl WHERE trigram = '$trigram' OR trigram = '';";
+		$resql=$this->db->query($query);
+		if ($resql)
+		{
+			$num = $this->db->num_rows($resql);
+			$i = 0;
+			if ($num)
+			{
+				$this->db->begin();
+				while ($i < $num)
+				{
+					$obj = $this->db->fetch_object($resql);
+					if ($obj)
+					{
+						$cleWS = $obj->wskey;
+						$urlBoutique = $obj->url;
+						$this->wsUpdateCategory($urlBoutique, $cleWS, $presta_category_id, $object->label);
+					}
+					$i++;
+				}
+				$this->db->commit();
+			}
+		}
+		
+		//gestion des erreurs
+		if (! $error)
+		{
+			$this->results = array('myreturn' => $myvalue);
+			$this->resprints = 'A text to show';
+			return 0; // or return 1 to replace standard code
+		}
+		else
+		{
+			$this->errors[] = 'Error message';
+			return -1;
+		}
+	}	
+
+	public function getCategoryImportKey($rowid){
+		$import_key = "";
+		$resql = $this->db->query("SELECT import_key FROM ".MAIN_DB_PREFIX."categorie where rowid = $rowid");
+		if ($resql) {
+			if ($this->db->num_rows($resql)) {
+				$obj = $this->db->fetch_object($resql);
+				if ($obj) $import_key = $obj->import_key;
+			}
+		}
+		return $import_key;
+	}
+	
+
+	function wsUpdateCategory($urlBoutique, $cleWS, $presta_category_id, $label) {
+		
+		try {
+			$webService = new PrestaShopWebservice($urlBoutique, $cleWS, false);
+
+			// check that the category exists on Prestashop
+			$options = array('resource' => 'categories', 'id' => $presta_category_id);
+			$xml = $webService->get($options);
+			$xmlCat = $xml->children()->children();
+			dol_syslog('------> return of WS UpdateCategory : '.print_r($xmlCat,true));
+			if(empty($xmlCat->id)) return 1;
+			
+			// modify object to send
+			$ii=0;
+			foreach($xmlCat->name->language as $foo){
+				$xmlCat->name->language[$ii] = $label;
+				$ii++;
+			}
+			
+			// send the updated XML object through webservice
+			dol_syslog('------> $xmlCat : '.print_r($xmlCat,true));
+			$options['putXml'] = $xmlCat ;//->asXML();
+			dol_syslog('------> sending to WS UpdateCategory put : '.print_r($options,true));
+			$res = $webService->edit($options);
+			dol_syslog('------> returned from WS UpdateCategory put : '.print_r($res,true));
+			
+		} catch (PrestaShopWebserviceException $ex) {
+			$trace = $ex->getTrace(); 
+			$errorCode = $trace[0]['args'][0];
+			if ($errorCode == 401)
+				dol_syslog('dolipresta - Bad auth key : '.$cleWS);
+			elseif ($errorCode == 302)
+				dol_syslog('dolipresta - BAD URL : '.$urlBoutique);
+			else
+				dol_syslog('dolipresta - Other error : <br />'.$ex->getMessage());
+		}
+	}
+		
+	/*
+	 * Synchroniza change on order status
+	 */
 	public function synchOrderStatus($action, $object) {
 		global $conf;
 		$SYNCH_ORDER = $conf->global->SYNCH_ORDER;

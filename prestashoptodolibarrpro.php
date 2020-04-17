@@ -15,9 +15,13 @@
 
 class PrestashopToDolibarrPro extends Module
 {
-    public $debug_mode = false;
-    /**temps maximum en seconde pour exporter*/
-    public $nbr_max_sec_export = 24;
+	/* === set this options as you need === */
+    public $debug_mode = true; /* if true then the $this->logInFile("bla bla bla"); really write messages on prestashopdolibarr.log */
+    public $debug_file = 'prestashopdolibarr.log'; /* on the current firectory of this module */
+    public $nbr_max_sec_export = 10; //24; /** maximum time in seconds to export */
+    public $preferred_address = 'invoice'; // 'invoice' vs. 'delivery', what to choose to take as address of the customer in Dolibarr?
+
+    /* === don't touch this === */
     private $id_customer = 0;
     private $firstname_customer = '';
     private $lastname_customer = '';
@@ -27,6 +31,7 @@ class PrestashopToDolibarrPro extends Module
     const UNINSTALL_SQL_FILE = 'uninstall.sql';
 
     private $html = '';
+    private $_html = '';
     private $post_errors = array();
 
     private $ws_adress_value = '';
@@ -48,14 +53,22 @@ class PrestashopToDolibarrPro extends Module
     private $dolibarr_ref_ind = 0;
     private $dolibarr_version = 0;
 
+    // cache for make faster the loop processes
+	private $countries = array();
+    private $order_states = array();
+	private $default_lang = ''; // default language
+	private $default_curr = ''; // default currency
+	private $already_synced_customers = array();
+
     public function __construct()
     {
         $this->name = 'prestashoptodolibarrpro';
         $this->tab = 'migration_tools';
-        $this->version = '1.9';
+        $this->version = '2.0';
         $this->author = 'PJ Conseil';
         $this->module_key = 'a9616fc7465750635d2cc4293269cb83';
         $this->need_instance = 0;
+        //$this->bootstrap = true;
 
         parent::__construct();
 
@@ -84,7 +97,9 @@ class PrestashopToDolibarrPro extends Module
                 'DOLIBARR_IS_SYNCH_CATEGORY',
                 'DOLIBARR_IS_SYNCH_STATUS',
                 'DOLIBARR_REF_IND',
-                'DOLIBARR_VERSION'
+                'DOLIBARR_VERSION',
+                'PS_LANG_DEFAULT',
+                'PS_CURRENCY_DEFAULT'
             )
         );
         if ($config['DOLIBARR_WS_ADRESS']) {
@@ -135,7 +150,13 @@ class PrestashopToDolibarrPro extends Module
         if ($config['DOLIBARR_VERSION']) {
             $this->dolibarr_version = $config['DOLIBARR_VERSION'];
         }
-        
+
+        $this->default_lang = (int)$config['PS_LANG_DEFAULT'];
+        $this->default_curr = (int)$config['PS_CURRENCY_DEFAULT'];
+
+        // prestashop order states
+        $this->loadOrderStates();
+
     }
 
     public function install()
@@ -148,7 +169,7 @@ class PrestashopToDolibarrPro extends Module
         $sql = str_replace(array('PREFIX_', 'ENGINE_TYPE'), array(_DB_PREFIX_, _MYSQL_ENGINE_), $sql);
         $sql = preg_split("/;\s*[\r\n]+/", $sql);
         foreach ($sql as $query) {
-            $this->logInFile("-requete d'installation : ".$query);
+            $this->logInFile('- installation query : '.$query);
             if ($query) {
                 if (!Db::getInstance()->execute(trim($query))) {
                     return false;
@@ -156,20 +177,25 @@ class PrestashopToDolibarrPro extends Module
             }
         }
 
-        if (!parent::install() || !$this->registerHook('createAccount') || !$this->registerHook('actionValidateOrder')) {
-            return false;
+        if (!parent::install()) {
+				$this->logInFile('Install failed on: parent::install().');
+				return false;
         }
-		
-		
+        if (!$this->registerHook('createAccount') || !$this->registerHook('actionValidateOrder')) {
+				$this->logInFile('Install failed on: detecting hooks createAccount or actionValidateOrder.');
+				return false;
+        }
         if (!$this->registerHook('updateproduct') || !$this->registerHook('addproduct') ||
             !$this->registerHook('updateOrderStatus')) {
-            return false;
+				$this->logInFile('Install failed on: detecting hooks updateproduct, addproduct or updateOrderStatus.');
+				return false;
         }
         if (!$this->registerHook('categoryAddition') || !$this->registerHook('categoryUpdate') ||
             !$this->registerHook('categoryDeletion')) {
-            return false;
+				$this->logInFile('Install failed on: detecting hooks categoryAddition, categoryUpdate or categoryDeletion.');
+				return false;
         }
-        $this->logInFile('install OK');
+        $this->logInFile('Install OK');
         return true;
     }
 
@@ -192,25 +218,33 @@ class PrestashopToDolibarrPro extends Module
         Configuration::deleteByName('DOLIBARR_REF_IND');
         Configuration::deleteByName('DOLIBARR_VERSION');
 
-        if ((!$this->deleteTables()) || !parent::uninstall()) {
+        if (!$this->deleteTables()) {
+			$this->logInFile('Uninstall failed on: deleting tables.');
+            return false;
+        }
+        if (!parent::uninstall()) {
+			$this->logInFile('Uninstall failed on: parent::uninstall()');
             return false;
         }
 
+		$this->logInFile('Uninstall OK');
+
         return true;
-        //return parent::uninstall();
     }
 
     private function deleteTables()
     {
         if (!file_exists(dirname(__FILE__).'/'.self::UNINSTALL_SQL_FILE)) {
+			$this->logInFile('Error: missing uninstall file '.dirname(__FILE__).'/'.self::UNINSTALL_SQL_FILE);
             return (false);
         } elseif (!$sql = Tools::file_get_contents(dirname(__FILE__).'/'.self::UNINSTALL_SQL_FILE)) {
+			$this->logInFile('Error: retrieving content of file '.dirname(__FILE__).'/'.self::UNINSTALL_SQL_FILE);
             return (false);
         }
         $sql = str_replace(array('PREFIX_', 'ENGINE_TYPE'), array(_DB_PREFIX_, _MYSQL_ENGINE_), $sql);
         $sql = preg_split("/;\s*[\r\n]+/", $sql);
         foreach ($sql as $query) {
-            $this->logInFile('-requete de desinstallation : '.$query);
+            $this->logInFile('- uninstall query : '.$query);
             if ($query) {
                 if (!Db::getInstance()->execute(trim($query))) {
                     return false;
@@ -222,24 +256,30 @@ class PrestashopToDolibarrPro extends Module
     }
 
 
-    public function logInFile($texte, $type = 'DEBUG')
+    public function logInFile($text, $type = 'DEBUG')
     {
-        if ($this->debug_mode == true) {
-            $fichier_a_ecrire = '../modules/prestashoptodolibarrpro/prestashopdolibarr.log';
-            if (file_exists('./modules/prestashoptodolibarrpro/prestashopdolibarr.log')) {
-                $fichier_a_ecrire = './modules/prestashoptodolibarrpro/prestashopdolibarr.log';
-            }
-            $in_file = fopen($fichier_a_ecrire, 'a+');
-            fputs($in_file, "LOG[$type][".date('Ymd.H:i')."]: $texte \n");
-            fclose($in_file);
-        }
+        if ($this->debug_mode != true) return;
+
+		$file_path = dirname(__FILE__).'/'.$this->debug_file;
+		$file_handle = fopen($file_path, 'a+');
+		fputs($file_handle, "LOG[$type][".date('Ymd.H:i:s')."]: $text \n");
+		fclose($file_handle);
     }
 
     public function getContent()
     {
-       
+
+		// check if it's an AJAX call
+		if (!empty($_GET['ajax'])){
+			switch ($_GET['ajax']){
+				case 'getHowMany': die( json_encode($this->ajax_getHowMany()) );
+			}
+		}
+
         $this->_html = '<h2>'.$this->displayName.'</h2>';
 
+		// check if has been posted new WS settings
+		// if not or yes but without errors then we process the submitted request, if any
         $this->postValidation();
         if (!count($this->post_errors)) {
             $this->postProcess();
@@ -248,65 +288,60 @@ class PrestashopToDolibarrPro extends Module
                 $this->_html .= '<div class = "alert error">'.$err.'</div>';
             }
         }
-
         $this->initConfig();
 
-        // get order state for order syncronization
-        $configurations = Configuration::getMultiple(array('PS_LANG_DEFAULT'));
-        $default_language = (int)$configurations['PS_LANG_DEFAULT'];
-        $order_states = $this->getOrderStates($default_language);
-
+        // typical dolibarr states
         $order_states_options = array(
-            '0' => '',
-            '1' => $this->l('Draft'),
-            '2' => $this->l('Validated'),
-            '3' => $this->l('Shipment in process'),
-            '4' => $this->l('Delivered'),
-            '5' => $this->l('Processed'),
-            '6' => $this->l('Canceled')
-        );
-        //$this->logInFile('orderstates : '.print_r($order_states,true));
+									'0' => '',
+									'1' => $this->l('Draft'),
+									'2' => $this->l('Validated'),
+									'3' => $this->l('Shipment in process'),
+									'4' => $this->l('Delivered'),
+									'5' => $this->l('Processed'),
+									'6' => $this->l('Canceled')
+								);
+
+        // prepare array of settings to be rendered on the forms at main.tpl
         $var = array(
-        'ws_adress_value' => htmlentities(Tools::getValue('adress', $this->ws_adress_value), ENT_COMPAT, 'UTF-8'),
-        'ws_key_value' => htmlentities(Tools::getValue('WSkey', $this->ws_key_value), ENT_COMPAT, 'UTF-8'),
-        'ws_login_value' => htmlentities(Tools::getValue('login', $this->ws_login_value), ENT_COMPAT, 'UTF-8'),
-        'ws_passwd_value' => htmlentities(Tools::getValue('password', $this->ws_passwd_value), ENT_COMPAT, 'UTF-8'),
-        'ws_trigram_value' => htmlentities($this->ws_trigram_value, ENT_COMPAT, 'UTF-8'),
-        'is_checked_synch_customer' => $this->is_checked_synch_customer,
-        'is_checked_synch_product' => $this->is_checked_synch_product,
-        'is_checked_synch_stock' => $this->is_checked_synch_stock,
-        'ws_warehouse_value' => htmlentities(
-            Tools::getValue('warehouse', $this->ws_warehouse_value),
-            ENT_COMPAT,
-            'UTF-8'
-        ),
-        'is_checked_synch_invoice' => $this->is_checked_synch_invoice,
-        'is_checked_synch_order' => $this->is_checked_synch_order,
-        'is_checked_synch_category' => $this->is_checked_synch_category,
-        'is_checked_synch_status' => $this->is_checked_synch_status,
-        'ws_accesss_ok' => $this->ws_accesss_ok,
-        'order_states' => $order_states,
-        'order_states_options' => $order_states_options);
+					'ws_adress_value' => htmlentities(Tools::getValue('adress', $this->ws_adress_value), ENT_COMPAT, 'UTF-8'),
+					'ws_key_value' => htmlentities(Tools::getValue('WSkey', $this->ws_key_value), ENT_COMPAT, 'UTF-8'),
+					'ws_login_value' => htmlentities(Tools::getValue('login', $this->ws_login_value), ENT_COMPAT, 'UTF-8'),
+					'ws_passwd_value' => htmlentities(Tools::getValue('password', $this->ws_passwd_value), ENT_COMPAT, 'UTF-8'),
+					'ws_trigram_value' => htmlentities($this->ws_trigram_value, ENT_COMPAT, 'UTF-8'),
+					'is_checked_synch_customer' => $this->is_checked_synch_customer,
+					'is_checked_synch_product' => $this->is_checked_synch_product,
+					'is_checked_synch_stock' => $this->is_checked_synch_stock,
+					'ws_warehouse_value' => htmlentities(Tools::getValue('warehouse', $this->ws_warehouse_value),ENT_COMPAT,'UTF-8'),
+					'is_checked_synch_invoice' => $this->is_checked_synch_invoice,
+					'is_checked_synch_order' => $this->is_checked_synch_order,
+					'is_checked_synch_category' => $this->is_checked_synch_category,
+					'is_checked_synch_status' => $this->is_checked_synch_status,
+					'ws_accesss_ok' => $this->ws_accesss_ok,
+					'order_states' => $this->order_states,
+					'order_states_options' => $order_states_options
+				);
         $this->context->smarty->assign('varMain', $var);
 
+        // render view at main.tpl
         $this->_html .= $this->display(__FILE__, 'views/templates/admin/main.tpl');
 
+        // use javascript to show only the requested tab, if none then the first one is showed
         $id_tab_action = Tools::getValue('id_tab');
         if ($id_tab_action) {
             $this->_html .= '<script type = "text/javascript">
-                  $(".menuTabButton.selected").removeClass("selected");
-                  $("#menuTab'.Tools::safeOutput($id_tab_action).'").addClass("selected");
-                  $(".tabItem.selected").removeClass("selected");
-                  $("#menuTab'.Tools::safeOutput($id_tab_action).'Sheet").addClass("selected");
-            </script>';
+								  $(".menuTabButton.selected").removeClass("selected");
+								  $("#menuTab'.Tools::safeOutput($id_tab_action).'").addClass("selected");
+								  $(".tabItem.selected").removeClass("selected");
+								  $("#menuTab'.Tools::safeOutput($id_tab_action).'Sheet").addClass("selected");
+							</script>';
         }
         return $this->_html;
-        
+
     }
 
     public function postValidation()
     {
-        //verification pour le bouton de configuration
+        // check for configuration button
         $btn_submit_acces_ws = Tools::getValue('btnSubmitAccesWS');
         if ($btn_submit_acces_ws) {
             $adress_action = Tools::getValue('adress');
@@ -324,45 +359,52 @@ class PrestashopToDolibarrPro extends Module
             } elseif (!($password_action)) {
                 $this->post_errors[] = $this->l('"Dolibarr password" is required.');
             } elseif (!($trigram_action)) {
-                // trigramme par defaut si vide
-                $this->_wstrigram_value = 'PTS';
+                $this->_wstrigram_value = 'PTS'; // default trigram if empty
             } elseif (Tools::strlen($trigram_action) <> 3) {
                 $this->post_errors[] = $this->l('"Trigram" must have 3 characters');
             }
         }
     }
 
+	/*
+	 * we check if it has been submited (POST) any of the forms on main.tpl
+	 */
     public function postProcess()
     {
-        //$configurations = Configuration::getMultiple(array('PS_LANG_DEFAULT', 'PS_CURRENCY_DEFAULT'));
+
+        // == update WS settings
 
         $btn_submit_acces_ws = Tools::getValue('btnSubmitAccesWS');
-        $adress_action = Tools::getValue('adress');
-        $wskey_action = Tools::getValue('WSkey');
-        $login_action = Tools::getValue('login');
-        $password_action = Tools::getValue('password');
-        $trigram_action = Tools::getValue('trigram');
-        //update WS settings
         if ($btn_submit_acces_ws) {
+			$adress_action = Tools::getValue('adress');
+			$wskey_action = Tools::getValue('WSkey');
+			$login_action = Tools::getValue('login');
+			$password_action = Tools::getValue('password');
+			$trigram_action = Tools::getValue('trigram');
+            if (!($trigram_action)) {
+                $trigram_action = 'PTS'; // default trigram if empty
+            }
             Configuration::updateValue('DOLIBARR_WS_ADRESS', $adress_action);
             Configuration::updateValue('DOLIBARR_WS_KEY', $wskey_action);
             Configuration::updateValue('DOLIBARR_WS_LOGIN', $login_action);
             Configuration::updateValue('DOLIBARR_WS_PASSWD', $password_action);
-            // trigramme par defaut si vide
-            if (!($trigram_action)) {
-                $trigram_action = 'PTS';
-            }
             Configuration::updateValue('DOLIBARR_WS_TRIGRAM', $trigram_action);
             $this->ws_trigram_value = $trigram_action;
-            $this->_html .= '<div class = "conf confirm"><img src= "../modules/prestashoptodolibarrpro/ok.gif" alt = "'.
-            $this->l('OK').'" /> '.
-            $this->l('Settings updated, you can test the connection by clicking on the "Test Webservice Acess" button')
-            .'</div>';
-        }
+            $this->_html .= '<div class = "conf confirm"><img src= "../modules/prestashoptodolibarrpro/ok.gif" alt = "'
+							.$this->l('OK').'" /> '
+							.$this->l('Settings updated, you can test the connection by clicking on the "Test Webservice Acess" button')
+							.'</div>';
+			}
 
-        //Test WS access
+        // == Webservice access test
+
         $btn_test_acces_ws = Tools::getValue('btnTestAccesWS');
         if ($btn_test_acces_ws) {
+			$adress_action = Tools::getValue('adress');
+			$wskey_action = Tools::getValue('WSkey');
+			$login_action = Tools::getValue('login');
+			$password_action = Tools::getValue('password');
+			$trigram_action = Tools::getValue('trigram');
             if ($adress_action && $wskey_action && $login_action && $password_action) {
                 Configuration::updateValue('DOLIBARR_WS_ADRESS', $adress_action);
                 Configuration::updateValue('DOLIBARR_WS_KEY', $wskey_action);
@@ -382,9 +424,8 @@ class PrestashopToDolibarrPro extends Module
 
             $versionDoli = str_replace(".", "", $version_n['dolibarr']);
             if ($versionDoli >= 360) {
-                $this->_html .= '<div class = "conf confirm"><img src= "../modules/prestashoptodolibarrpro/ok.gif" alt = "'.
-                $this->l('OK').'" /> '
-                .$this->l('Prestashop is linked with Dolibarr! ').'</div>';
+                $this->_html .= '<div class = "conf confirm"><img src= "../modules/prestashoptodolibarrpro/ok.gif" alt = "'.$this->l('OK').'" /> '
+								.$this->l('Prestashop is linked with Dolibarr! ').'</div>';
                 Configuration::updateValue('DOLIBARR_WS_ADRESS', $this->ws_adress_value);
                 Configuration::updateValue('DOLIBARR_WS_ACCESS_OK', 'OK');
                 $this->dolibarr_version = $versionDoli;
@@ -395,17 +436,14 @@ class PrestashopToDolibarrPro extends Module
             } elseif ($version_n['result']['result_code'] == 'BAD_VALUE_FOR_SECURITY_KEY') {
                 $this->_html .= '<div class = "alert error">'.$this->l('Bad value for security key').'</div>';
             } else {
-                $m = 'Dolibarr doesn\'t respond, please check your Dolibarr\'s URL and the comunication keys.';
-                $m .= 'Then check if Soap is enable in the PHP configuration of your dolibarr\'s server';
-                $this->_html .= '<div class = "alert error">'.
-                $this->l($m).
-                '</div>';
+                $m = 'Dolibarr doesn\'t respond, please check your Dolibarr\'s URL and the comunication keys.'
+					.'Then check if Soap is enable in the PHP configuration of your dolibarr\'s server';
+                $this->_html .= '<div class = "alert error">'.$this->l($m).'</div>';
             }
         }
 
-        /**
-        * Export clients
-        */
+        // == Export customers
+
         $btn_submit_export_client = Tools::getValue('btnSubmitExportClient');
         if ($btn_submit_export_client) {
             $tmsp_start = time();
@@ -413,86 +451,77 @@ class PrestashopToDolibarrPro extends Module
 
             if ($import_client['result'] == 'OK') {
                 if ($import_client['nbrMaxClient']) { //pas totalement importé
-                    $this->_html .= '<div class = "conf warn"><img src= "../modules/prestashoptodolibarrpro/warning.png" alt = "OK" /> '.
-                    $this->l('You have successfully exported').
-                    ' '.$import_client['nbClientImported'].' '.$this->l('customer(s) on').' '.
-                    $import_client['nbClientTotal'].
-                    $this->l(', press Start again for exporting next customers').'</div>';
+                    $this->_html .= '<div class = "conf warn"><img src= "../modules/prestashoptodolibarrpro/warning.png" alt = "OK" /> '
+									.$this->l('You have successfully exported').' '.$import_client['nbClientImported'].' '
+									.$this->l('customer(s) on').' '.$import_client['nbClientTotal']
+									.$this->l(', press Start again for exporting next customers').'</div>';
                 } else {
-                    $this->_html .= '<div class = "conf confirm"><img src= "../modules/prestashoptodolibarrpro/ok.gif" alt = "OK" /> '.
-                    $import_client['nbClientImported'].' '.
-                    $this->l('customer(s) on').' '.$import_client['nbClientTotal'].' '.$this->l('exported').'</div>';
+                    $this->_html .= '<div class = "conf confirm"><img src= "../modules/prestashoptodolibarrpro/ok.gif" alt = "OK" /> '
+									.$import_client['nbClientImported'].' '.$this->l('customer(s) on').' '
+									.$import_client['nbClientTotal'].' '.$this->l('exported').'</div>';
                 }
             } else {
-                $this->_html .= '<div class = "conf confirm"><img src= "../modules/prestashoptodolibarrpro/ko.gif" alt = "KO" /> '.
-                $this->l('something went wrong').' : '.
-                $import_client['reason'].'</div>';
+                $this->_html .= '<div class = "conf confirm"><img src= "../modules/prestashoptodolibarrpro/ko.gif" alt = "KO" /> '
+								.$this->l('something went wrong').' : '.$import_client['reason'].'</div>';
             }
         }
 
-        /**
-        * Reset export client
-        */
+        // == Reset export customer
+
         $btn_reset_export_client = Tools::getValue('btnResetExportClient');
         if ($btn_reset_export_client) {
             $reset_customers = $this->resetCustomers();
 
             if ($reset_customers) {
-                $this->_html .= '<div class = "conf confirm"><img src= "../modules/prestashoptodolibarrpro/ok.gif" alt = "OK" /> '.
-                $this->l('Reset on customers done').'</div>';
+                $this->_html .= '<div class = "conf confirm"><img src= "../modules/prestashoptodolibarrpro/ok.gif" alt = "OK" /> '
+								.$this->l('Reset on customers done').'</div>';
             } else {
-                $this->_html .= '<div class = "conf confirm"><img src= "../modules/prestashoptodolibarrpro/ko.gif" alt = "KO" /> '.
-                $this->l('something went wrong').'</div>';
+                $this->_html .= '<div class = "conf confirm"><img src= "../modules/prestashoptodolibarrpro/ko.gif" alt = "KO" /> '
+								.$this->l('something went wrong').'</div>';
             }
         }
 
-        /**
-        * Export produits
-        */
+        // == Export products
+
         $btn_submit_export_product = Tools::getValue('btnSubmitExportProduct');
         if ($btn_submit_export_product) {
             $tmsp_start = time();
             $result_product = $this->importProduits(0, $tmsp_start);
 
             if ($result_product['result'] == 'OK') {
-                if ($result_product['nbrMaxProduct']) {//pas totalement importé
-                    $this->_html .= '<div class = "conf warn"><img src= "../modules/prestashoptodolibarrpro/warning.png" alt = "OK" /> '.
-                    $this->l('You have successfully exported').
-                    ' '.$result_product['nbProductImported'].' '.$this->l('product(s) on').' '.
-                    $result_product['nbProductTotal'].
-                    $this->l(', press Start again for exporting next products').'</div>';
+                if ($result_product['nbrMaxProduct']) { // not fully imported
+                    $this->_html .= '<div class = "conf warn"><img src= "../modules/prestashoptodolibarrpro/warning.png" alt = "OK" /> '
+									.$this->l('You have successfully exported').' '.$result_product['nbProductImported'].' '
+									.$this->l('product(s) on').' '.$result_product['nbProductTotal']
+									.$this->l(', press Start again for exporting next products').'</div>';
                 } else {
-                    $this->_html .= '<div class = "conf confirm"><img src= "../modules/prestashoptodolibarrpro/ok.gif" alt = "OK" /> '.
-                    $result_product['nbProductImported'].
-                    ' '.$this->l('product(s) on').' '.$result_product['nbProductTotal'].' '.
-                    $this->l('exported').'</div>';
+                    $this->_html .= '<div class = "conf confirm"><img src= "../modules/prestashoptodolibarrpro/ok.gif" alt = "OK" /> '
+									.$result_product['nbProductImported'].' '.$this->l('product(s) on').' '
+									.$result_product['nbProductTotal'].' '.$this->l('exported').'</div>';
                 }
             } else {
-                $this->_html .= '<div class = "conf confirm"><img src= "../modules/prestashoptodolibarrpro/ko.gif" alt = "KO" /> '.
-                $this->l('something went wrong').
-                ' : '.$result_product['reason'].'</div>';
+                $this->_html .= '<div class = "conf confirm"><img src= "../modules/prestashoptodolibarrpro/ko.gif" alt = "KO" /> '
+								.$this->l('something went wrong').' : '.$result_product['reason'].'</div>';
             }
         }
 
-        /**
-        * Reset export produits
-        */
+        // == Reset export products
+
         $btn_reset_export_product = Tools::getValue('btnResetExportProduct');
         if ($btn_reset_export_product) {
             $reset_products = $this->resetProducts();
 
             if ($reset_products) {
-                $this->_html .= '<div class = "conf confirm"><img src= "../modules/prestashoptodolibarrpro/ok.gif" alt = "OK" /> '.
-                $this->l('Reset on products done').'</div>';
+                $this->_html .= '<div class = "conf confirm"><img src= "../modules/prestashoptodolibarrpro/ok.gif" alt = "OK" /> '
+								.$this->l('Reset on products done').'</div>';
             } else {
-                $this->_html .= '<div class = "conf confirm"><img src= "../modules/prestashoptodolibarrpro/ko.gif" alt = "KO" /> '.
-                $this->l('something went wrong').'</div>';
+                $this->_html .= '<div class = "conf confirm"><img src= "../modules/prestashoptodolibarrpro/ko.gif" alt = "KO" /> '
+								.$this->l('something went wrong').'</div>';
             }
         }
 
-        /**
-        * Export factures
-        */
+        // == Export invoices
+
         $btn_submit_import_invoice = Tools::getValue('btnSubmitImportInvoice');
         if ($btn_submit_import_invoice) {
             $this->logInFile('--Export invoices--');
@@ -501,108 +530,95 @@ class PrestashopToDolibarrPro extends Module
             $result_invoice = $this->importFacturesOrCommandes(0, $tmsp_start, false, true);
             $this->logInFile('FIN export factures : '.print_r($result_invoice, true));
             if ($result_invoice['result'] == 'OK') {
-                if ($result_invoice['nbrMaxOrder']) {//pas totalement importé
-                    $this->_html .= '<div class = "conf confirm"><img src= "../modules/prestashoptodolibarrpro/ok.gif" alt = "'.
-                    $this->l('Ok').'" /> '.
-                    $this->l('You have successfully exported').' '.$result_invoice['nbOrderOk'].' '.
-                    $this->l('invoice(s) on').' '.$result_invoice['nbOrderTotal'].
-                    $this->l(', press Start again for exporting next invoices').'</div>';
+                if ($result_invoice['nbrMaxOrder']) { // not fully imported
+                    $this->_html .= '<div class = "conf confirm"><img src= "../modules/prestashoptodolibarrpro/ok.gif" alt = "'.$this->l('Ok').'" /> '
+									.$this->l('You have successfully exported').' '.$result_invoice['nbOrderOk'].' '
+									.$this->l('invoice(s) on').' '.$result_invoice['nbOrderTotal']
+									.$this->l(', press Start again for exporting next invoices').'</div>';
                 } else {
-                    $this->_html .= '<div class = "conf confirm"><img src= "../modules/prestashoptodolibarrpro/ok.gif" alt = "'.
-                    $this->l('Ok').'" /> '.$result_invoice['nbOrderOk'].' '.
-                    $this->l('invoice(s) on').' '.$result_invoice['nbOrderTotal'].' '.$this->l('exported').'</div>';
+                    $this->_html .= '<div class = "conf confirm"><img src= "../modules/prestashoptodolibarrpro/ok.gif" alt = "'
+									.$this->l('Ok').'" /> '.$result_invoice['nbOrderOk'].' '.$this->l('invoice(s) on').' '
+									.$result_invoice['nbOrderTotal'].' '.$this->l('exported').'</div>';
                 }
             } else {
-                $this->_html .= '<div class = "conf confirm"><img src= "../modules/prestashoptodolibarrpro/ko.gif" alt = "KO" /> '.
-                $this->l('something went wrong').' : '.
-                $result_invoice['reason'].'</div>';
+                $this->_html .= '<div class = "conf confirm"><img src= "../modules/prestashoptodolibarrpro/ko.gif" alt = "KO" /> '
+								.$this->l('something went wrong').' : '.(is_array($result_invoice['reason']) ? print_r($result_invoice['reason'],true) : $result_invoice['reason']).'</div>';
             }
         }
 
-        /**
-        * Reset export factures
-        */
+        // == Reset export invoices
+
         $btnreset_export_invoice = Tools::getValue('btnResetExportInvoice');
         if ($btnreset_export_invoice) {
             $resetinvoices = $this->resetInvoices();
 
             if ($resetinvoices) {
-                $this->_html .= '<div class = "conf confirm"><img src= "../modules/prestashoptodolibarrpro/ok.gif" alt = "OK" /> '.
-                $this->l('Reset on invoices done').'</div>';
+                $this->_html .= '<div class = "conf confirm"><img src= "../modules/prestashoptodolibarrpro/ok.gif" alt = "OK" /> '
+								.$this->l('Reset on invoices done').'</div>';
             } else {
-                $this->_html .= '<div class = "conf confirm"><img src= "../modules/prestashoptodolibarrpro/ko.gif" alt = "KO" /> '.
-                $this->l('something went wrong').'</div>';
+                $this->_html .= '<div class = "conf confirm"><img src= "../modules/prestashoptodolibarrpro/ko.gif" alt = "KO" /> '
+								.$this->l('something went wrong').'</div>';
             }
         }
 
-        /**
-        * Export commandes
-        */
+        // == Export orders
+
         $btn_submit_import_order = Tools::getValue('btnSubmitImportOrder');
         if ($btn_submit_import_order) {
             $this->logInFile('--Export orders--');
             $tmsp_start = time();
 
             $result_order = $this->importFacturesOrCommandes(0, $tmsp_start, true, false);
-            $this->logInFile('retour export commandes : '.print_r($result_order, true));
+            $this->logInFile('export orders/invoices result : '.print_r($result_order, true));
             if ($result_order['result'] == 'OK') {
-                if ($result_order['nbrMaxOrder']) {//pas totalement importé
-                    $this->_html .= '<div class = "conf confirm"><img src= "../modules/prestashoptodolibarrpro/ok.gif" alt = "'.
-                    $this->l('Ok').'" /> '.
-                    $this->l('You have successfully exported').' '.$result_order['nbOrderOk'].' '.
-                    $this->l('order(s) on').' '.$result_order['nbOrderTotal'].
-                    $this->l(', press Start again for exporting next orders').'</div>';
+                if ($result_order['nbrMaxOrder']) { // not fully imported
+                    $this->_html .= '<div class = "conf confirm"><img src= "../modules/prestashoptodolibarrpro/ok.gif" alt = "'.$this->l('Ok').'" /> '
+									.$this->l('You have successfully exported').' '.$result_order['nbOrderOk'].' '.$this->l('order(s) on').' '
+									.$result_order['nbOrderTotal'].$this->l(', press Start again for exporting next orders').'</div>';
                 } else {
-                    $this->_html .= '<div class = "conf confirm"><img src= "../modules/prestashoptodolibarrpro/ok.gif" alt = "'.
-                    $this->l('Ok').'" /> '.$result_order['nbOrderOk'].' '.
-                    $this->l('order(s) on').' '.$result_order['nbOrderTotal'].' '.
-                    $this->l('exported').'</div>';
+                    $this->_html .= '<div class = "conf confirm"><img src= "../modules/prestashoptodolibarrpro/ok.gif" alt = "'
+									.$this->l('Ok').'" /> '.$result_order['nbOrderOk'].' '
+									.$this->l('order(s) on').' '.$result_order['nbOrderTotal'].' '
+									.$this->l('exported').'</div>';
                 }
             } else {
-                $this->_html .= '<div class = "conf confirm"><img src= "../modules/prestashoptodolibarrpro/ko.gif" alt = "KO" /> '.
-                $this->l('something went wrong').' : '.
-                $result_order['reason'].'</div>';
+                $this->_html .= '<div class = "conf confirm"><img src= "../modules/prestashoptodolibarrpro/ko.gif" alt = "KO" /> '
+								.$this->l('something went wrong').': '.$result_order['reason'].'</div>';
             }
         }
 
-        /**
-        * Reset export commandes
-        */
+        // == Reset export orders
+
         $btn_reset_export_order = Tools::getValue('btnResetExportOrder');
         if ($btn_reset_export_order) {
             $resetorders = $this->resetOrders();
             if ($resetorders) {
-                $this->_html .= '<div class = "conf confirm"><img src= "../modules/prestashoptodolibarrpro/ok.gif" alt = "OK" /> '.
-                $this->l('Reset on orders done').'</div>';
+                $this->_html .= '<div class = "conf confirm"><img src= "../modules/prestashoptodolibarrpro/ok.gif" alt = "OK" /> '
+								.$this->l('Reset on orders done').'</div>';
             } else {
-                $this->_html .= '<div class = "conf confirm"><img src= "../modules/prestashoptodolibarrpro/ko.gif" alt = "KO" /> '.
-                $this->l('something went wrong').'</div>';
+                $this->_html .= '<div class = "conf confirm"><img src= "../modules/prestashoptodolibarrpro/ko.gif" alt = "KO" /> '
+								.$this->l('something went wrong').'</div>';
             }
         }
 
-        /**
-        * Export categories
-        */
+        // == Export categories
+
         $btn_submit_import_category = Tools::getValue('btnSubmitImportCategory');
         if ($btn_submit_import_category) {
             $this->logInFile('--Export categories--');
             $result_category = $this->importCategories();
             if ($result_category['result']['result_code'] == 'OK') {
-                $this->_html .= '<div class = "conf confirm"><img src= "../modules/prestashoptodolibarrpro/ok.gif" alt = "'.
-                $this->l('Ok').'" /> '.
-                $this->l('You have successfully exported your categories').'</div>';
+                $this->_html .= '<div class = "conf confirm"><img src= "../modules/prestashoptodolibarrpro/ok.gif" alt = "'.$this->l('Ok').'" /> '
+								.$this->l('You have successfully exported your categories').'</div>';
             } else {
-                $this->_html .= '<div class = "conf confirm"><img src= "../modules/prestashoptodolibarrpro/ko.gif" alt = "KO" /> '.
-                $this->l('something went wrong').' : '.
-                $result_category['result']['result_label'].'</div>';
+                $this->_html .= '<div class = "conf confirm"><img src= "../modules/prestashoptodolibarrpro/ko.gif" alt = "KO" /> '
+								.$this->l('something went wrong').' : '.$result_category['result']['result_label'].'</div>';
             }
         }
 
-        /**
-        * checking des synchronisation
-        */
+        // == checking synchronization
+
         $btn_submit_synchro = Tools::getValue('btnSubmitSynchro');
-        
         if ($btn_submit_synchro) {
             $warehouse = Tools::getValue('warehouse');
             if ($warehouse) {
@@ -616,24 +632,24 @@ class PrestashopToDolibarrPro extends Module
             $check_synch_order = Tools::getValue('checkSynchOrder');
             $check_synch_category = Tools::getValue('checkSynchCategory');
             $check_synch_status = Tools::getValue('checkSynchStatus');
-            
-            
-            $configurations = Configuration::getMultiple(array('PS_LANG_DEFAULT'));
-            $default_language = (int)$configurations['PS_LANG_DEFAULT'];
-            $order_states = $this->getOrderStates($default_language);
-            $this->logInFile('check synchro order states'.print_r($order_states, true));
-            foreach ($order_states as $x => $order_state) {
+
+            $this->loadOrderStates();
+
+            //echo _var_export($_POST,'$_POST')._var_export($order_states,'$order_states');die();
+            $this->logInFile('check synchro, prestashop order states: '.print_r($this->order_states, true));
+
+            foreach ($this->order_states as $x => $order_state) {
                 $get_id = Tools::getValue('select_'.$order_state['id_order_state']);
                 //update orderstate
-                $query = 'UPDATE '._DB_PREFIX_.'order_state  
+                $query = 'UPDATE '._DB_PREFIX_.'order_state
                         SET id_order_state_doli = '.(int)$get_id.'
                         WHERE id_order_state = '.(int)$order_state['id_order_state'];
                 if (!Db::getInstance()->execute($query)) {
-                    $this->logInFile('erreur de maj id_order_state dans la base order_state');
+                    $this->logInFile('db error updating id_order_state_doli (='.$get_id.') in the order_state table for id_order_state='.$order_state['id_order_state']);
                 }
                 $this->order_states[$x]['id_order_state_doli'] = $get_id;
             }
-            
+
             Configuration::updateValue('DOLIBARR_IS_SYNCH_CUSTOMER', $check_synch_customer);
             Configuration::updateValue('DOLIBARR_IS_SYNCH_PRODUCT', $check_synch_products);
             Configuration::updateValue('DOLIBARR_IS_SYNCH_INVOICE', $check_synch_invoice);
@@ -641,7 +657,7 @@ class PrestashopToDolibarrPro extends Module
             Configuration::updateValue('DOLIBARR_IS_SYNCH_ORDER', $check_synch_order);
             Configuration::updateValue('DOLIBARR_IS_SYNCH_CATEGORY', $check_synch_category);
             Configuration::updateValue('DOLIBARR_IS_SYNCH_STATUS', $check_synch_status);
-            
+
             $this->is_checked_synch_customer = $check_synch_customer;
             $this->is_checked_synch_product = $check_synch_products;
             $this->is_checked_synch_invoice = $check_synch_invoice;
@@ -649,34 +665,23 @@ class PrestashopToDolibarrPro extends Module
             $this->is_checked_synch_order = $check_synch_order;
             $this->is_checked_synch_category = $check_synch_category;
             $this->is_checked_synch_status = $check_synch_status;
-            
 
-            if ($this->is_checked_synch_customer || $this->is_checked_synch_product ||
-                $this->is_checked_synch_invoice) {
-                if ($this->is_checked_synch_order || $this->is_checked_synch_category) {
+            if ($this->is_checked_synch_customer || $this->is_checked_synch_product || $this->is_checked_synch_invoice
+				|| $this->is_checked_synch_order || $this->is_checked_synch_category || $this->is_checked_synch_status) {
+
                     $this->_html .= '<div class = "conf confirm"><img src= "../modules/prestashoptodolibarrpro/ok.gif" alt = "" /> ';
 
-                    if ($this->is_checked_synch_customer) {
-                        $this->_html .= '<br>'.$this->l('Customers are synchronised with Dolibarr');
-                    }
-                    if ($this->is_checked_synch_product) {
-                        $this->_html .= '<br>'.$this->l('Products are synchronised with Dolibarr');
-                    }
-                    if ($this->is_checked_synch_invoice) {
-                        $this->_html .= '<br>'.$this->l('Invoices are synchronised with Dolibarr');
-                    }
-                    if ($this->is_checked_synch_order) {
-                        $this->_html .= '<br>'.$this->l('Orders are synchronised with Dolibarr');
-                    }
-                    if ($this->is_checked_synch_category) {
-                        $this->_html .= '<br>'.$this->l('Categories are synchronised with Dolibarr');
-                    }
-                    if ($this->is_checked_synch_status) {
-                        $this->_html .= '<br>'.$this->l('Status are synchronised with Dolibarr');
-                    }
+                    if ($this->is_checked_synch_customer) $this->_html .= '<br>'.$this->l('Customers are synchronised with Dolibarr');
+                    if ($this->is_checked_synch_product)  $this->_html .= '<br>'.$this->l('Products are synchronised with Dolibarr');
+                    if ($this->is_checked_synch_stock)    $this->_html .= '<br>'.$this->l('Products stocks are synchronised with Dolibarr');
+
+                    if ($this->is_checked_synch_invoice)  $this->_html .= '<br>'.$this->l('Invoices are synchronised with Dolibarr');
+                    if ($this->is_checked_synch_order)    $this->_html .= '<br>'.$this->l('Orders are synchronised with Dolibarr');
+                    if ($this->is_checked_synch_category) $this->_html .= '<br>'.$this->l('Categories are synchronised with Dolibarr');
+                    if ($this->is_checked_synch_status)   $this->_html .= '<br>'.$this->l('Status are synchronised with Dolibarr');
 
                     $this->_html .= '</div>';
-                }
+
             } else {
                 $this->_html .= '<div class = "alert warning">'.$this->l('You have nothing checked').'</div>';
             }
@@ -685,17 +690,15 @@ class PrestashopToDolibarrPro extends Module
 
     /**
     *
-    * methodes d'exportation categories
+    * methods to export categories
     *
     **/
     public function importCategories()
     {
         $this->logInFile('--importCategories--');
-        $configurations = Configuration::getMultiple(array('PS_LANG_DEFAULT', 'PS_CURRENCY_DEFAULT'));
-        $default_language = (int)$configurations['PS_LANG_DEFAULT'];
-        $this->logInFile('cat language : '.$default_language);
+        $this->logInFile('cat language : '.$this->default_lang);
         $result_get_order_tab = array('result'=>array('result_code' => '', 'result_label' => ''));
-        $category_tab = Category::getCategories($default_language, false);
+        $category_tab = Category::getCategories($this->default_lang, false);
         $this->logInFile('->getCategoriesTab : '.print_r($category_tab, true));
         $clean_cat_tab = $this->cleanCategory($category_tab);
         $this->logInFile('->CLEAN getCategoriesTab : '.print_r($clean_cat_tab, true));
@@ -724,366 +727,296 @@ class PrestashopToDolibarrPro extends Module
 
         $this->logInFile('echange avec le '.$ws_method_put_category.' ('.$ws_dol_url_category.') ');
         $this->logInFile('requete : '.$soapclient1->request);
-        $this->logInFile('reponse du WS in tab : '.print_r($result_get_order_tab, true));
+        $this->logInFile('WS response : '.print_r($result_get_order_tab, true));
         return $result_get_order_tab;
     }
 
     /**
     *
-    * methodes d'exportation clients
+    * customers export
     *
     **/
     public function importClients($customer_ec = 0, $tmsp_start = 0)
     {
         $this->logInFile('--importClients--');
-        $this->logInFile('importClients : '.print_r($customer_ec, true));
-        $configurations = Configuration::getMultiple(array('PS_LANG_DEFAULT', 'PS_CURRENCY_DEFAULT'));
-        $default_language = (int)$configurations['PS_LANG_DEFAULT'];
+        $this->logInFile(' passed customers : '.print_r($customer_ec, true));
 
         $result = 'OK';
-        $nb_client_total        = 0;
-        $nb_client_imported    = 0;
-        $nbr_max_client        = false;
+        $nb_imported_customers    = 0;
+        $nb_max_customer        = false;
 
-        if ($customer_ec == 0) {      //Catching up
-            $obj = new Customer();
-            $customers = $obj->getCustomers();
-            $customers = array_reverse($customers);  //Recuperation des customers
+        // Catching up: all the customers at db
+        if ($customer_ec == 0) {
+
+            $customers = $this->getCustomers();
+
+        // the customers passed
         } else {
             $customers = $customer_ec;
         }
 
-        $nb_client_total = count($customers);
+        $nb_customers = count($customers);
+        $wsretourbis = array('result'=>array('result_label'=>''));
 
-        $wsretourbis = array();
-        $wsretourbis['result']['result_label'] = '';
         foreach ($customers as $customer) {
+
             $c_id          = $customer['id_customer'];
-            $ref          = $this->ws_trigram_value.$this->format($c_id, 10);
-            $orders       = Order::getCustomerOrders((int)$c_id, true);
-            $this->logInFile('\customer en cours before new, '.(int)$c_id.' : '.print_r($customer, true));
-            $customer     = new Customer($c_id);
-            $this->logInFile('\customer en cours after new, '.(int)$c_id.' : '.print_r($customer, true));
-            $customer_info = $customer->getFields();
-            $nbr_commandes = count($orders);
-            $addresses = $customer->getAddresses($default_language);
+            $this->logInFile('\customer id='.(int)$c_id.' : '.print_r($customer, true));
+            $customer_ref = $this->getCustomerRef($c_id); // return array with: date_add, date_upd ,date_export_doli, id_ext_doli
+            $id_ext_doli = $customer_ref['id_ext_doli']; // dolibarr_id of the customer
 
-            //récupération des ref internes
-            $customer_ref = $this->getCustomerRef($c_id);
+            // addresses
+            $customer_obj = new Customer($c_id);
+            $addresses_temp    = $customer_obj->getAddresses($this->default_lang);
+            $nb_addresses = is_array($addresses_temp) ? count($addresses_temp) : 0;
+            $addresses = array();
+            $last_addr_update = '';
+            if ($nb_addresses>0) {
+				foreach ($addresses_temp as $addr){
+					if (!empty($addr['city'])) $addresses[$addr['id_address']] = $addr;
+					$last_addr_update = max($last_addr_update,$addr['date_upd']);
+				}
+			}
+            $this->logInFile('\addresses ('.$nb_addresses.') (last update '.$last_addr_update.'): '.print_r($addresses, true));
 
-            $this->logInFile('\customer ref interne:'.print_r($customer_ref, true));
-            $this->logInFile('\addresses : '.print_r($addresses, true));
-            $this->logInFile($customer->date_upd.' - '.$customer->date_add);
+            // check if the customer was updated since the last export
+            if (!empty($id_ext_doli) && !empty($customer_ref['date_export_doli'])){
+				if ($customer_ref['date_export_doli'] > max($last_addr_update,$customer_ref['date_upd'])){
+					continue; // we don't need to export nothing :-) so we skip to the next customer on the list
+				}
+			}
 
-            $max_upd = 0;
-            $max_add = 0;
-            //on cherche un maj adresse eventuelle
-            foreach ($addresses as $adress_c) {
-                if ($adress_c['date_add'] > $max_add) {
-                    $max_add = $adress_c['date_add'];
-                }
-                if ($adress_c['date_upd'] > $max_upd) {
-                    $max_upd = $adress_c['date_upd'];
-                }
+            // we must choose only one address
+            $pref_address = array();
+            $last_order = $this->getCustomerLastOrder($c_id);
+            $this->logInFile('\last order (of customer id='.$c_id.'): '.print_r($last_order,true));
+
+            if ($nb_addresses==1){ // we take the unique address available
+
+				$pref_address = reset($addresses);
+
+			}else{ // we take the preferred (invoice/delivery) of the last order, if any
+
+				$last_addr = array('invoice'=> '', 'delivery'=>'');
+				if ($last_order && empty($last_addr['invoice'])  && !empty($last_order['id_address_invoice']))
+						$last_addr['invoice']  = $last_order['id_address_invoice'];
+				if ($last_order && empty($last_addr['delivery']) && !empty($last_order['id_address_delivery']))
+						$last_addr['delivery'] = $last_order['id_address_delivery'];
+
+				// preferred prestashop customer address (invoice / delivery)
+				$pref = $this->preferred_address; // invoice/delivery
+				if (!empty($last_addr[$pref]) && isset($addresses[$last_addr[$pref]])){
+					$pref_address = $addresses[$last_addr[$pref]];
+				}else{
+					$other_pref = $pref=='invoice' ? 'delivery' : 'invoice';
+					if (!empty($last_addr[$other_pref]) && isset($addresses[$last_addr[$other_pref]])){
+						$pref_address = $addresses[$last_addr[$other_pref]];
+					}
+				}
+			}
+            $this->logInFile('\preferred addr: '.print_r($pref_address, true));
+
+
+			// other customer data
+            $private_note = $customer_obj->note;
+            $url = $customer_obj->website;
+
+			if (!is_array($customer) || !isset($customer['firstname']) || !isset($customer['lastname']) || !isset($customer['email'])){
+				$customer_info = $customer_obj->getFields();
+				$c_firstname   = $customer_info['firstname'];
+				$c_name        = $customer_info['lastname'];
+				$email         = $customer_info['email'];
+			}else{
+				$c_firstname   = $customer['firstname'];
+				$c_name        = $customer['lastname'];
+				$email         = $customer['email'];
+			}
+
+			//$is_client = $nb_orders > 0 || $is_clientForcer == 1 ? 1 : 2;
+			$is_client = $last_order ? 1 : 2;
+
+			// try to get the customer by ref
+			$ref = $this->ws_trigram_value.$this->format($c_id, 10);
+            if (empty($id_ext_doli)){
+				$wsretour = $this->WSGetCustomer($ref);
+				if (!empty($wsretour['thirdparty']['id'])){
+					$id_ext_doli = $wsretour['thirdparty']['id'];
+				}
             }
 
-            //gestion anti re-import
-            if ($customer_ref['date_export_doli'] >= max($customer->date_upd, $customer->date_add)) {
-                if ($customer_ref['date_export_doli'] >= max($max_upd, $max_add)) {
-                    $this->logInFile('--->Client ref : '.$c_id.' deja importe en date de maj, au suivant');
-                    $nb_client_imported++;
-                    continue;
-                }
-            }
+            // if we have the id_ext_doli then we update the customer on dolibarr
+            if (!empty($id_ext_doli)){
 
-            $code_postal = '00000';
-            $telephone = '0000000000';
-            $private_note = $customer->note;
-            $url = $customer->website;
-
-            if (count($addresses)) {
-                $adress = $addresses[0]['company'].' '.$addresses[0]['firstname'].' '.$addresses[0]['lastname'].', '.
-                $addresses[0]['address1'].', '.
-                $addresses[0]['address2'].', '.$addresses[0]['postcode'].', '.$addresses[0]['city'].', '.
-                $addresses[0]['country'];
-                $code_postal = $addresses[0]['postcode'];
-                $ville = $addresses[0]['city'];
-                $pays = $addresses[0]['country'];
-                $obj_country = new Country();
-                $id_country = $obj_country->getIdByName(null, $pays);
-                $country_code_iso = $obj_country->getIsoById($id_country);
-
-                $adress_phone = $addresses[0]['phone'];
-                $adress_phone_mobile = $addresses[0]['phone_mobile'];
-                if ($adress_phone != '') {
-                    $telephone = $adress_phone;
-                }
-                if ($adress_phone_mobile != '') {
-                    $telephone = $adress_phone_mobile;
-                }
-            }
-
-            $c_name        = $customer_info['lastname'];
-            $c_firstname   = $customer_info['firstname'];
-            $email        = $customer_info['email'];
-
-            if ($nbr_commandes > 0) {
-                // || $is_clientForcer == 1)   //  A REVOIR
-                $is_client = 1;
-            } else {
-                $is_client = 2;
-            }
-
-            $code_retourbis = 'KO';
-            if ($customer_ref['id_ext_doli']) {   //update customer
-                $enrich_customer = $this->enrichCustomers(
-                    $customer_ref['id_ext_doli'],
-                    $c_name,
-                    $c_firstname,
-                    $ref,
-                    $is_client,
-                    $private_note,
-                    $adress,
-                    $code_postal,
-                    $ville,
-                    $country_code_iso,
-                    $telephone,
-                    $email,
-                    $url,
-                    $addresses
-                );
+                $enrich_customer = $this->enrichCustomer(
+											$id_ext_doli,
+											$c_name,
+											$c_firstname,
+											$ref,
+											$is_client,
+											$private_note,
+											$email,
+											$url,
+											$pref_address
+										);
                 $wsretourbis = $this->WSModCustomer($enrich_customer);
                 $code_retourbis = $wsretourbis['result']['result_code'];
-            }
-            if ((!$customer_ref['id_ext_doli']) || ($code_retourbis == 'NOT_FOUND')) {
-                // add customer si inexistant ou update a échoué
-                // faire un get pr s'assurer qu'il n'existe pas deja (en cas de reinstallation) et récupérer son id
-                if ($code_retourbis != 'NOT_FOUND') {
-                    $wsretour = $this->WSGetCustomer($ref);
-                    $code_retour = $wsretour['result']['result_code'];
-                } else {
-                    $code_retour = 'NOT_FOUND';
-                }
 
-                if ($code_retour == 'OK') { //update
-                    $enrich_customer = $this->enrichCustomers(
-                        $wsretour['thirdparty']['id'],
-                        $c_name,
-                        $c_firstname,
-                        $ref,
-                        $is_client,
-                        $private_note,
-                        $adress,
-                        $code_postal,
-                        $ville,
-                        $country_code_iso,
-                        $telephone,
-                        $email,
-                        $url,
-                        $addresses
-                    );
-                    $wsretourbis = $this->WSModCustomer($enrich_customer);
-                    $code_retourbis = $wsretourbis['result']['result_code'];
-                } elseif ($code_retour == 'NOT_FOUND') {
-                    //create
-                    $enrich_customer = $this->enrichCustomers(
-                        '',
-                        $c_name,
-                        $c_firstname,
-                        $ref,
-                        $is_client,
-                        $private_note,
-                        $adress,
-                        $code_postal,
-                        $ville,
-                        $country_code_iso,
-                        $telephone,
-                        $email,
-                        $url,
-                        $addresses
-                    );
-                    $wsretourbis = $this->WSAddCustomer($enrich_customer);
-                    $code_retourbis = $wsretourbis['result']['result_code'];
-                }
+
+            // we add a new customer on dolibarr
+            }else {
+
+				$enrich_customer = $this->enrichCustomer(
+											'',
+											$c_name,
+											$c_firstname,
+											$ref,
+											$is_client,
+											$private_note,
+											$email,
+											$url,
+											$pref_address
+										);
+				$wsretourbis = $this->WSAddCustomer($enrich_customer);
+				$code_retourbis = $wsretourbis['result']['result_code'];
+
             }
 
             if ($code_retourbis == 'OK') {
                 $this->setCustomerRef($c_id, $wsretourbis['id']);
-                $nb_client_imported++;
-                $customer_ref['id_ext_doli'] = $wsretourbis['id'];
+                $nb_imported_customers++;
+                $id_ext_doli = $wsretourbis['id'];
             } else {
-                //pb de communication
+                // communication problem
                 $result = 'KO';
                 break;
             }
 
-            //nbr de client max atteint
+            // max client number reached
             $tmsp_now = time();
             $this->logInFile('--->tmsp Start :'.$tmsp_start, 'ERROR');
             $this->logInFile('--->tmsp Now :'.$tmsp_now, 'ERROR');
             $this->logInFile('--->tmsp diff :'.($tmsp_now - $tmsp_start), 'ERROR');
-            if ((($tmsp_now - $tmsp_start) >= $this->nbr_max_sec_export) && ($nb_client_imported != $nb_client_total)) {
-                $nbr_max_client = true;
-                $this->logInFile("---> time limit d'export atteint, break");
+            if ((($tmsp_now - $tmsp_start) >= $this->nbr_max_sec_export) && ($nb_imported_customers != $nb_customers)) {
+                $nb_max_customer = true;
+                $this->logInFile("---> export time limit reached, break");
                 break;
             }
         }
 
-        return array('result'=>$result, 'nbClientImported'=>$nb_client_imported,
-        'nbClientTotal'=>$nb_client_total, 'nbrMaxClient'=>$nbr_max_client,
-        'id_ext_doli'=>$customer_ref['id_ext_doli'], 'reason'=>$wsretourbis['result']['result_label']);
+		$this->logInFile("-- exiting of importClients (".(time() - $tmsp_start)." seconds)");
+
+        return array('result'=>$result, 'nbClientImported'=>$nb_imported_customers,
+					 'nbClientTotal'=>$nb_customers, 'nbrMaxClient'=>$nb_max_customer,
+					 'id_ext_doli'=>$id_ext_doli, 'reason'=>$wsretourbis['result']['result_label']);
     }
 
     /*
-    * fonction enrichissement customers
+    * enrichment customers
     */
-    public function enrichCustomers(
-        $id,
-        $nom,
-        $prenom,
-        $client_ref,
-        $is_client,
-        $private_note,
-        $address,
-        $code_postal,
-        $ville,
-        $country_code_iso,
-        $telephone,
-        $email,
-        $url,
-        $addresses
-    ) {
-        $this->logInFile('--enrichCustomers--');
-        $nom = $this->noSpecialCharacterV3($nom);
-        $prenom = $this->noSpecialCharacterV3($prenom);
-        $client_ref = $this->noSpecialCharacterV3($client_ref);
-        $private_note = $this->noSpecialCharacterV3($private_note);
-        $address = $this->noSpecialCharacterV3($address);
-        $ville = $this->noSpecialCharacterV3($ville);
-        $telephone = $this->noSpecialCharacterV3($telephone);
-        $email = $this->noSpecialCharacterV3($email);
-        $url = $this->noSpecialCharacterV3($url);
-        $enrich = array();
+    public function enrichCustomer($id,$nom,$prenom,$client_ref,$is_client,$private_note,$email,$url,$pref_address)
+    {
+        $enrich = array(
+					'id' => $id,
+					'ref' => trim($this->noSpecialCharacterV3($nom.' '.$prenom)),
+					'ref_ext' => $this->noSpecialCharacterV3($client_ref),
+					'status' => '1', //0 = clos // 1 = actif
+					'client' => $is_client,
+					'supplier' => '0',
+					'customer_code' => '-1',
+					'supplier_code' => '',
+					'customer_code_accountancy' => '',
+					'supplier_code_accountancy' => '',
+					'note_public' => 'Imported from Prestashop',
+					'note_private' => $this->noSpecialCharacterV3($private_note),
+					'province_id' => '',
+					'country_id' => '',
+					'fax' => '',
+					'email' => $this->noSpecialCharacterV3($email),
+					'url' => $this->noSpecialCharacterV3($url),
+					'profid1' => '',
+					'profid2' => '',
+					'profid3' => '',
+					'profid4' => '',
+					'profid5' => '',
+					'profid6' => '',
+					'capital' => '',
+					'barcode' => '',
+					'vat_used' => '',
+					'vat_number' => '',
+					'canvas' => '',
+					'individual' => ''
+				);
 
-        $enrich['id'] = $id;
-        $enrich['ref'] = $nom.' '.$prenom;
-        $enrich['ref_ext'] = $client_ref;
-        $enrich['status'] = '1'; //0 = clos // 1 = actif
-        $enrich['client'] = $is_client;
-        $enrich['supplier'] = '0';
-        $enrich['customer_code'] = '-1';
-        $enrich['supplier_code'] = '';
-        $enrich['customer_code_accountancy'] = '';
-        $enrich['supplier_code_accountancy'] = '';
-        $enrich['note_public'] = 'Imported from Prestashop';
-        $enrich['note_private'] = $private_note;
-        $enrich['address'] = $address;
-        $enrich['zip'] = $code_postal;
-        $enrich['town'] = $ville;
-        $enrich['province_id'] = '';
-        $enrich['country_id'] = '';
-        $enrich['country_code'] = $country_code_iso;
-        $enrich['phone'] = $telephone;
-        $enrich['fax'] = '';
-        $enrich['email'] = $email;
-        $enrich['url'] = $url;
-        $enrich['profid1'] = '';
-        $enrich['profid2'] = '';
-        $enrich['profid3'] = '';
-        $enrich['profid4'] = '';
-        $enrich['profid5'] = '';
-        $enrich['profid6'] = '';
-        $enrich['capital'] = '';
-        $enrich['barcode'] = '';
-        $enrich['vat_used'] = '';
-        $enrich['vat_number'] = '';
-        $enrich['canvas'] = '';
-        $enrich['individual'] = '';
+		// address
+		if (!empty($pref_address['id_address'])){
 
-        foreach ($addresses as $x => $adresse_n) {
-            if ($adresse_n['postcode'] != '') {
-                $adress = $adresse_n['address1'];
-                if ($adresse_n['address2'] != '') {
-                    $adress .= ' '.$adresse_n['address2'].',';
-                }
+				$addr = $this->enrichAddress($pref_address);
+				foreach ($addr as $f=>$v) {
+					$enrich[$f] = $this->noSpecialCharacterV3($v);
+				}
+		}
 
-                $nom        = $adresse_n['lastname'];
-                if ($adresse_n['company'] != '') {
-                    $nom = $adresse_n['company'].', '.$nom;
-                }
-
-                $prenom        = $adresse_n['firstname'];
-                $code_postal = $adresse_n['postcode'];
-                $ville         = $adresse_n['city'];
-                $pays         = $adresse_n['country'];
-                $obj_country = new Country();
-                $id_country     = $obj_country->getIdByName(null, $pays);
-                $country_code_iso = $obj_country->getIsoById($id_country);
-
-                $adress_phone = $adresse_n['phone'];
-                $adress_phone_mobile = $adresse_n['phone_mobile'];
-                if ($adress_phone != '') {
-                    $telephone = $adress_phone;
-                }
-                if ($adress_phone_mobile != '') {
-                    $telephone = $adress_phone_mobile;
-                }
-
-                $adress     = $this->noSpecialCharacterV3($adress);
-                $ville         = $this->noSpecialCharacterV3($ville);
-                $telephone     = $this->noSpecialCharacterV3($telephone);
-
-                $enrich['addressesClient']['addresseClient'][$x]['nom'] = $nom;
-                $enrich['addressesClient']['addresseClient'][$x]['prenom'] = $prenom;
-                $enrich['addressesClient']['addresseClient'][$x]['adresse'] = $adress;
-                $enrich['addressesClient']['addresseClient'][$x]['zip'] = $code_postal;
-                $enrich['addressesClient']['addresseClient'][$x]['town'] = $ville;
-                $enrich['addressesClient']['addresseClient'][$x]['country_code'] = $country_code_iso;
-                $enrich['addressesClient']['addresseClient'][$x]['phone'] = $telephone;
-                $enrich['addressesClient']['addresseClient'][$x]['import_key'] =
-                $this->ws_trigram_value.$this->format($adresse_n['id_address'], 10);
-            }
-        }
+		if (empty($enrich['zip']))   $enrich['zip'] = '00000';
+		if (empty($enrich['phone'])) $enrich['phone'] = '0000000000';
 
         return $enrich;
     }
 
+    private function enrichAddress($arr){
+
+		if (!isset($this->countries[$arr['country']])){
+			$obj_country = new Country();
+			$id_country  = $obj_country->getIdByName(null, $arr['country']);
+			$this->countries[$arr['country']] = $obj_country->getIsoById($id_country);
+		}
+
+		$adr = array(
+					'address'      => trim((!empty($arr['address1'])?$arr['address1']:'') . (!empty($arr['address2']) ? ', '.$arr['address2'] : '')),
+					'zip'          => (!empty($arr['postcode']) ? $arr['postcode'] : ''),
+					'town'         => (!empty($arr['city']) ? $arr['city'] : ''),
+					'country_code' => $this->countries[$arr['country']],
+					'phone'        => (!empty($arr['phone_mobile']) ? $arr['phone_mobile'] : (!empty($arr['phone'])? $arr['phone'] : '')),
+					'import_key'   => ($this->ws_trigram_value.$this->format($arr['id_address'], 10))
+				);
+
+		return $adr;
+	}
+
     /**
     *
-    * methodes importation produits
+    * product import methods
     *
     **/
     public function importProduits($product_ec = 0, $tmsp_start = 0)
     {
         $this->logInFile('--importProduits--');
-        $configurations      = Configuration::getMultiple(array('PS_LANG_DEFAULT', 'PS_CURRENCY_DEFAULT'));
-        $default_language    = (int)$configurations['PS_LANG_DEFAULT'];
         $result              = 'OK';
         $nb_product_total    = 0;
         $nb_product_imported = 0;
         $nbr_max_product     = false;
 
-        $this->logInFile('--IMPORT DES PRODUITS--');
+        $this->logInFile('--IMPORTING THE PRODUCTS--');
 
         if ($this->dolibarr_ref_ind == 0) {
             $this->dolibarr_ref_ind = 1;
         }
-        $this->logInFile('variable incrementation ref produit: '.$this->dolibarr_ref_ind);
-        //get des id product dont la référence externe <> référence externe, par ordre croissant
+        $this->logInFile('variable incrementation product ref: '.$this->dolibarr_ref_ind);
+
+        // Get product ids including external reference <> external reference, in ascending order
         $idsrefdoliproduct = $this->getRefdoliEmpty('product');
-        $this->logInFile('liste des id product dont ref doli <> : '.print_r($idsrefdoliproduct, true));
+        $this->logInFile('list of product ids including doli ref <> : '.print_r($idsrefdoliproduct, true));
         if ($idsrefdoliproduct) {
             foreach ($idsrefdoliproduct as $product) {
-                if ($product['reference'] == '') {  //reference vide => on la créée
+                if ($product['reference'] == '') {  // empty reference => we created it
                     $refdoli = $this->ws_trigram_value.$this->dolibarr_ref_ind;
                     $this->dolibarr_ref_ind++;
                     Configuration::updateValue('DOLIBARR_REF_IND', $this->dolibarr_ref_ind);
-                } else { // reference renseignée
-                    //Est-elle unique ?
+                } else { // reference completed
+                    // Is it unique?
                     $is_unique_id = $this->isRefUnique($product['id_product'], $product['reference'], 'product');
-                    //test sur les id inférieurs de ref identiques
+                    // Test on lower ids of identical ref
                     if ($is_unique_id == 0) {
-                        //elle est unique
+                        // It is unique
                         $refdoli = $product['reference'];
                     } else {
                         $refdoli = $product['reference'].'-p'.$this->dolibarr_ref_ind;
@@ -1095,30 +1028,30 @@ class PrestashopToDolibarrPro extends Module
             }
         }
 
-        //get des id product_attribute dont la référence externe <> référence interne, par ordre croissant
-        // Limite : pas de MAJ de la réf attribut quand celle-ci est vide en interne
-        //=> le chgt d'une référence d'un produit pere sera inchangé
+        // Get product_attribute ids including external reference <> internal reference, in ascending order
+        // Limit: no update of the attribute ref when it is empty internally
+        //=> the chgt of a reference of a father product will be unchanged
         $idsrefdoliproduct = $this->getRefdoliEmpty('product_attribute');
-        $this->logInFile('liste des id product_attribute dont ref <> : '.print_r($idsrefdoliproduct, true));
+        $this->logInFile('list of product_attribute ids including ref <> : '.print_r($idsrefdoliproduct, true));
         $ind = 1;
         if ($idsrefdoliproduct) {
             $id_product = -1;
             foreach ($idsrefdoliproduct as $product) {
-                if ($product['id_product'] <> $id_product) {  //chgt de produit => réinit incrément
+                if ($product['id_product'] <> $id_product) {  // chgt de produit => reset increment
                     $ind = 1;
                     $id_product = $product['id_product'];
                 }
-                if ($product['reference'] == '') {  //reference vide => on la créée
+                if ($product['reference'] == '') {  // empty reference => we created it
                     $refdoli = $product['product_reference'].'-d'.$ind;
                     $ind ++;
-                } else { // reference renseignée
-                    //Est-elle unique ?
+                } else { // reference completed
+                    // Is it unique ?
                     $is_unique_id = $this->isRefUnique(
                         $product['id_product_attribute'],
                         $product['reference'],
                         'product_attribute'
                     );
-                    if ($is_unique_id == 0) { //elle est unique
+                    if ($is_unique_id == 0) { // it's unique
                         $refdoli = $product['reference'];
                     } else {
                         $refdoli = $product['product_reference'].'-d'.$ind;
@@ -1129,9 +1062,9 @@ class PrestashopToDolibarrPro extends Module
             }
         }
 
-        //prise des id des produits pere
+        // Taking father product ids
         if ($product_ec == 0) {
-            //set_time_limit(600);
+            // set_time_limit(600);
             $products = Product::getProducts(
                 $this->context->cookie->id_lang,
                 0,
@@ -1145,14 +1078,14 @@ class PrestashopToDolibarrPro extends Module
             $products = array($product_ec);
         }
 
-        //boucle de decompte de tout les produits
+        // Account loop for all products
         foreach ($products as $product) {
              if (_PS_VERSION_ < '1.5') {
                 $product_attributes_ids = $this->getProductAttributesIds($product['id_product'], 0);
             } else {
                 $product_attributes_ids = Product::getProductAttributesIds($product['id_product'], false);
             }
-            
+
             if (!$product_attributes_ids) {
                 $product_attributes_ids = array (array('id_product_attribute'=>0));
             }
@@ -1164,73 +1097,69 @@ class PrestashopToDolibarrPro extends Module
         $id_product_doli_ec = '';
         $wsretour = array();
         $wsretour['result']['result_label'] = '';
-        //parcours des produits pere
+        // father product path
         foreach ($products as $product) {
-            $this->logInFile('->parcours du produit id: '.$product['id_product'].' / '.print_r($product, true));
+            $this->logInFile('->product path id: '.$product['id_product'].' / '.print_r($product, true));
 
-            // Recuperation des declinaisons
+            // Recovery of variations
             if (_PS_VERSION_ < '1.5') {
                 $product_attributes_ids = $this->getProductAttributesIds($product['id_product'], 0);
             } else {
                 $product_attributes_ids = Product::getProductAttributesIds($product['id_product'], false);
             }
 
-            //le produit n'a pas d'attribut : on creee un fictif = '0'
+            // The product has no attribute: we create a fictitious = '0'
             if (!$product_attributes_ids) {
                 $product_attributes_ids = array(array('id_product_attribute'=>0));
             }
 
-            //Boucle sur les declinaisons
+            // Loop on variations
             foreach ($product_attributes_ids as $product_attribute_id) {
                 $product_ref = $this->ws_trigram_value.$this->format($product['id_product'], 10).
                 $this->format($product_attribute_id['id_product_attribute'], 10);
                 //$product_presta_ref = $product['reference'];
 
-                //Recup references interne
+                // Internal references recuperation
                 $product_ref_interne = $this->getProductRef(
                     $product['id_product'],
                     $product_attribute_id['id_product_attribute']
                 );
                 $this->logInFile(
-                    '-->references produits internes recuperees ('.$product['id_product'].', '.
-                    $product_attribute_id['id_product_attribute'].
-                    ') : '.print_r($product_ref_interne, true)
-                );
+                    '--> internal product references recovered ('.$product['id_product'].', '
+                    .$product_attribute_id['id_product_attribute'].') : '.print_r($product_ref_interne, true));
                 $this->logInFile(
-                    'date interne : '.$product_ref_interne['date_export_doli'].' - date upd : '.
-                    $product['date_upd'].' - date add : '.
-                    $product['date_add']
-                );
+                    'internal date : '.$product_ref_interne['date_export_doli'].' - date upd : '
+                    .$product['date_upd'].' - date add : '.$product['date_add']);
 
                 if ($product_attribute_id['id_product_attribute'] != 0) {
-                    //$product_attribute_ref = $product_ref_interne['reference'];
+                    // $product_attribute_ref = $product_ref_interne['reference'];
                     $ean13 = $product_ref_interne['ean13'];
                     $upc = $product_ref_interne['upc'];
                 } else {
-                    //$product_attribute_ref = '';
+                    // $product_attribute_ref = '';
                     $ean13 = $product['ean13'];
                     $upc = $product['upc'];
                 }
                 $product_presta_ref = $product_ref_interne['ref_doli'];
-                $this->logInFile('-->parcours de lattribut ref : '.$product_ref.' / '.$product_presta_ref);
+                $this->logInFile('-->ref attribute path : '.$product_ref.' / '.$product_presta_ref);
 
-                //correction bug sur id attribute en commandes et factures
+                // Bug correction on id attribute in orders and invoices
                 if (array_key_exists('id_product_attribute', $product) == true) {
                     if ($product['id_product_attribute'] == $product_attribute_id['id_product_attribute']) {
                         $id_product_doli_ec = $product_ref_interne['id_ext_doli'];
                     }
                 }
 
-                //gestion anti report
+                // Anti deferral management
                 if ($product_ref_interne['date_export_doli'] >= max($product['date_upd'], $product['date_add'])) {
-                    $this->logInFile('--->attribut ref : '.$product_ref.' deja importe en date de maj, au suivant');
+                    $this->logInFile('--->attribut ref : '.$product_ref.' already imports as of maj, next');
                     $nb_product_imported++;
                     continue;
                 }
 
                 $code_retour = '';
-                if ($product_ref_interne['id_ext_doli']) {   //update product
-                    $this->logInFile('--- MAJ PRODUIT1 ---');
+                if ($product_ref_interne['id_ext_doli']) {   // update product
+                    $this->logInFile('--- MAJ PRODUIT1 ---'."\n\n  +++product = ".print_r($product,true));
                     $enrich = $this->enrichProducts(
                         $product_ref_interne['id_ext_doli'],
                         $product_ref,
@@ -1238,7 +1167,7 @@ class PrestashopToDolibarrPro extends Module
                         $product_attribute_id['id_product_attribute'],
                         $product['description_short'],
                         $product['active'],
-                        $default_language,
+                        $this->default_lang,
                         $product_presta_ref,
                         $ean13,
                         $upc
@@ -1247,14 +1176,14 @@ class PrestashopToDolibarrPro extends Module
                     $code_retour = $wsretour['result']['result_code'];
                 }
                 if ((!$product_ref_interne['id_ext_doli']) || ($code_retour == 'NOT_FOUND')) {
-                    // add product si inexistant ou update a échoué
-                    // faire un get pr s'assurer qu'il n'existe pas deja
-                    //(en cas de reinstallation) et récupérer son id
+                    // add product if non-existent or update failed
+                    // make a get to make sure it doesn't already exist
+                    // (in case of reinstallation) and recover its id
                     if ($code_retour != 'NOT_FOUND') {
                         $wsretour = $this->WSGetProduct($product_ref);
                         $code_retour = $wsretour['result']['result_code'];
                     }
-                    if ($code_retour == 'OK') { //update product
+                    if ($code_retour == 'OK') { // update product
                         $this->logInFile('--- MAJ PRODUIT2 ---');
                         $enrich = $this->enrichProducts(
                             $wsretour['product']['id'],
@@ -1263,15 +1192,15 @@ class PrestashopToDolibarrPro extends Module
                             $product_attribute_id['id_product_attribute'],
                             $product['description_short'],
                             $product['active'],
-                            $default_language,
+                            $this->default_lang,
                             $product_presta_ref,
                             $ean13,
                             $upc
                         );
                         $wsretour = $this->WSModProduct($enrich);
                         $code_retour = $wsretour['result']['result_code'];
-                    } elseif ($code_retour == 'NOT_FOUND') {  //create product
-                        $this->logInFile('--- INSERT PRODUIT ---');
+                    } elseif ($code_retour == 'NOT_FOUND') {  // create product
+                        $this->logInFile('--- ADD PRODUCT ---');
                         $enrich = $this->enrichProducts(
                             '',
                             $product_ref,
@@ -1279,7 +1208,7 @@ class PrestashopToDolibarrPro extends Module
                             $product_attribute_id['id_product_attribute'],
                             $product['description_short'],
                             $product['active'],
-                            $default_language,
+                            $this->default_lang,
                             $product_presta_ref,
                             $ean13,
                             $upc
@@ -1297,13 +1226,14 @@ class PrestashopToDolibarrPro extends Module
                     );
                     $nb_product_imported++;
                     $product_ref_interne['id_ext_doli'] = $wsretour['id'];
-                } else {       //pb de communication
-                    $this->logInFile("--->plantage lors de l'update de lattribut : $product_ref", 'ERROR');
+                    $product_ref_interne['date_export_doli'] = date('Y-m-d H:i:s');
+                } else {       // pb de communication
+                    $this->logInFile("---> crash during attribute update : $product_ref", 'ERROR');
                     $result = 'KO';
                     break;
                 }
 
-                //nbr de produit max atteint
+                // number of max product reached
                 $tmsp_now = time();
                 $this->logInFile('--->tmsp Start :'.$tmsp_start, 'ERROR');
                 $this->logInFile('--->tmsp Now :'.$tmsp_now, 'ERROR');
@@ -1311,11 +1241,11 @@ class PrestashopToDolibarrPro extends Module
                 if ((($tmsp_now - $tmsp_start) >= $this->nbr_max_sec_export) &&
                 ($nb_product_imported != $nb_product_total)) {
                     $nbr_max_product = true;
-                    $this->logInFile('---> nombre max de produits exportés atteint, break');
+                    $this->logInFile('---> max number of exported products reached, break');
                     break;
                 }
 
-                //correction bug sur id attribute en commandes et factures
+                // correction bug on id attribute in orders and invoices
                 if (array_key_exists('id_product_attribute', $product) == true) {
                     if ($product['id_product_attribute'] == $product_attribute_id['id_product_attribute']) {
                         $id_product_doli_ec = $product_ref_interne['id_ext_doli'];
@@ -1333,7 +1263,7 @@ class PrestashopToDolibarrPro extends Module
     }
 
     /*
-    * fonction enrichissement produits
+    * product enrichment
     */
     public function enrichProducts(
         $id_ext_doli,
@@ -1373,9 +1303,9 @@ class PrestashopToDolibarrPro extends Module
         $tva_tx = $get_tva_tx['rate'];
 
         $product_ref = $this->noSpecialCharacterV3($product_ref);
-        $description_short = $this->noSpecialCharacterV3($description_short);
+        $description_short = $this->noSpecialCharacterV3(strip_tags($description_short));
         $id_ext_doli = $this->noSpecialCharacterV3($id_ext_doli);
-        $product_name = $this->noSpecialCharacterV3($product_name);
+        $product_name = $this->noSpecialCharacterV3(strip_tags($product_name));
 
         $enrich = array();
         $enrich['id'] = $id_ext_doli;
@@ -1394,8 +1324,7 @@ class PrestashopToDolibarrPro extends Module
             $enrich['barcode_type'] = '';
         }
         $enrich['description'] = $description_short;
-        $enrich['note'] = 'imported from Prestashop';
-        // pas cette notion dans prestashop => taguee comme importé de presta
+        $enrich['note'] = 'imported from Prestashop'; // not this notion in prestashop => tagged as imported from presta
         $enrich['status_tosell'] = $active;
         $enrich['status_tobuy'] = '0';
         $enrich['country_id'] = '';
@@ -1412,29 +1341,30 @@ class PrestashopToDolibarrPro extends Module
         }
         $enrich['pmp'] = '';
         $enrich['canvas'] = '';
-		
-		//ToDo: Multi Image
-		//by @wdammak
-		
-		//recuperation de l'image
+
+		// ToDo: Multi Image
+		// by @wdammak
+
+		// image recovery
         $image_product = Image::getImages($default_language, $id_product, $id_product_attribute);
-		
-		//ToDo: Ajouter toutes les images vers dolibarr
-		//by @wdammak
-		
-		//prepare array
+
+		// ToDo: Add all images to Dolibarr
+		// by @wdammak
+
+		// prepare array
 		if (!array_key_exists(0, $image_product))
 		{
 			$image_id = $this->getIdImage($id_product);
 			$image_product = array('id_image'=> $image_id);
 		}
-		
-		//multi image
+
+		// multi image
 		foreach($image_product as $key => $curimage)
 		{
-			$image_id = $curimage['id_image'];
-			if ($image_id != '')
+			//if ($image_id != '') /* [caos30] */
+			if (is_array($curimage) && !empty($curimage['id_image']))
 			{
+				$image_id = $curimage['id_image'];
 				if ($image_id < 10)
 					$image_path = $image_id.'/';
 				else if ($image_id >= 10 && $image_id < 100)
@@ -1443,10 +1373,10 @@ class PrestashopToDolibarrPro extends Module
 					$image_path = $image_id[0].'/'.$image_id[1].'/'.$image_id[2].'/';
 				else if ($image_id >= 1000 && $image_id < 10000)
 					$image_path = $image_id[0].'/'.$image_id[1].'/'.$image_id[2].'/'.$image_id[3].'/';
-				
+
 				$imageType = '-'.ImageType::getFormatedName('home');
 				$image_path_hd = $image_path.$image_id.$imageType.'.jpg';
-				
+
 				$image_name = $image_id.$imageType.'.jpg';
 				$soapclient = new nusoap_client('test');
 
@@ -1457,11 +1387,8 @@ class PrestashopToDolibarrPro extends Module
 					$image_b64 = '';
 				}
 
-				$this->logInFile(
-					"->image : \nfor product name : ".
-					$product_name."\n image disque dur = $image_path_hd2 \n & image name : ".$image_name
-				);
-				
+				$this->logInFile("->image : \nfor product name : ".$product_name."\n hard drive image = $image_path_hd2 \n & image name : ".$image_name);
+
 				$enrich['images']['image'][] = array(
 												'id_image'=> $image_id,
 												'photo'=> $image_b64,
@@ -1470,21 +1397,18 @@ class PrestashopToDolibarrPro extends Module
 												'imgHeight'=> '250',
 												);
 			} else {
-				$this->logInFile("->image : Pas d'image pour ce produit");
+				$this->logInFile("->image : No image for this product ".(is_array($curimage)?"|n  curimage = ".var_export($curimage,true):''));
 			}
 		}
 
-        //récupération des catégories du produits
+        // retrieving product categories
         if ($this->is_checked_synch_category == 'true') {
             $category_obj_list = Product::getProductCategories($id_product);
             $this->logInFile('->getProductCategories '.$id_product.' : '.print_r($category_obj_list, true));
             foreach ($category_obj_list as $id => $cat) {
                 $category_obj_list[$id] = $this->ws_trigram_value.$this->format($cat, 10);
             }
-            $this->logInFile(
-                '->getProductCategories apres transformation '.$id_product.' : '.
-                print_r($category_obj_list, true)
-            );
+            $this->logInFile('-> getProductCategories after transformation '.$id_product.' : '.print_r($category_obj_list, true));
             $enrich['category_list'] = $category_obj_list;
         }
         return $enrich;
@@ -1492,7 +1416,7 @@ class PrestashopToDolibarrPro extends Module
 
     /**
     *
-    * methodes importation factures et/ou commandes
+    * export one/all invoices/orders from prestashop to dolibarr
     *
     **/
     public function importFacturesOrCommandes($facture_ec = 0, $tmsp_start = 0, $is_commande = 0, $is_facture = 0)
@@ -1502,129 +1426,136 @@ class PrestashopToDolibarrPro extends Module
         $result = 'OK';
         $nb_order_total = 0;
         $nbr_max_order = false;
-        $obj = new Customer();
 
-        if ((is_int($facture_ec) == true) && ($facture_ec == 0)) {   //export de masse
-            //on part des utilisateurs
-            $customers = $obj->getCustomers();
-            //recup nombre total de factures présentes
+        // == mass export of all invoices/orders
+
+        if ((is_int($facture_ec) == true) && ($facture_ec == 0)) {
+
+            // we get the orders of all customers
+			$obj_customer = new Customer();
+            $customers = $obj_customer->getCustomers();
             foreach ($customers as $customer) {
                 $c_id = $customer['id_customer'];
                 $orders = Order::getCustomerOrders((int)$c_id, true);
-                $nb_order_total += count($orders);
+                if (is_array($orders)) $nb_order_total += count($orders);
             }
-            //parcours des clients
+
+            // customer loop
             foreach ($customers as $customer) {
                 $c_id = $customer['id_customer'];
-                $orders = Order::getCustomerOrders((int)$c_id, true);  // on recupère les commandes de l'utilisateur
+                $this->logInFile('customer id = '.$c_id.' customer = '.print_r($customer,true));
+
+                $orders = Order::getCustomerOrders((int)$c_id, true);  // we recover the customer orders
                 $orders = array_reverse($orders);
 
-                $this->logInFile('customer n°'.$c_id);
                 foreach ($orders as $row) {
                     $order = new Order($row['id_order']);
-
                     $enrich_retour = $this->enrichOrderAndSend($order, $tmsp_start, $is_commande, $is_facture);
-                    $this->logInFile('---> retour enrichissement order : '.print_r($enrich_retour, true));
-                    $code_retour = $enrich_retour['code'];
-                    if (($code_retour == 'OK') || ($code_retour == 'DBL')) {
+                    $this->logInFile('---> return of enrichOrderAndSend : '.print_r($enrich_retour, true));
+                    $code_retour = is_array($enrich_retour) && !empty($enrich_retour['code']) ? $enrich_retour['code'] : 'KO';
+                    if ($code_retour == 'OK' || $code_retour == 'DBL') {
                         $nb_order_ok++;
                     } else {
-                        //pb de communication
-                        $this->logInFile('test break');
+                        $this->logInFile('export object failed, so stopped synchronization', 'ERROR');
                         $result = 'KO';
+                        if (!is_array($enrich_retour)) $enrich_retour = array();
+                        if (!isset($enrich_retour['reason'])) $enrich_retour['reason'] = print_r($enrich_retour,true);
                         break;
                     }
 
-                    //temps limite depassé
+                    // time limit exceeded ?
                     $tmsp_now = time();
-                    $this->logInFile('--->tmsp Start :'.$tmsp_start, 'ERROR');
-                    $this->logInFile('--->tmsp Now :'.$tmsp_now, 'ERROR');
-                    $this->logInFile('--->tmsp diff :'.($tmsp_now - $tmsp_start), 'ERROR');
+                    $this->logInFile('---> tmsp Start :'.$tmsp_start, 'DEBUG');
+                    $this->logInFile('---> tmsp Now :'.$tmsp_now, 'DEBUG');
+                    $this->logInFile('---> tmsp diff :'.($tmsp_now - $tmsp_start), 'DEBUG');
                     if ((($tmsp_now - $tmsp_start) >= $this->nbr_max_sec_export) && ($nb_order_ok != $nb_order_total)) {
                         $nbr_max_order = true;
-                        $this->logInFile("---> temps limite depasse dans l'export de commandes/factures, break");
+                        $this->logInFile('---> time limit exceeded in the export of orders/invoices, break','ERROR');
                         break;
                     }
                 }
 
-                //break de temps limite depassé
-                if ($nbr_max_order) {
-                    break;
-                }
+				// export through WS failed
+				if ($result == 'KO') break;
+
+                // break time limit exceeded
+                if ($nbr_max_order) break;
+
             }
-        } else {    //hookDisplayOrderConfirmation
+
+		// == export of one invoice/order
+
+        } else {
+
+			$nb_order_total = 1;
             $this->logInFile('---> enrichOrderAndSend ');
             $enrich_retour = $this->enrichOrderAndSend($facture_ec, $tmsp_start, $is_commande, $is_facture);
-            $this->logInFile('---> retour enrichissement order 2 : '.print_r($enrich_retour, true));
-            $code_retour = $enrich_retour['code'];
-            if (($code_retour == 'OK') || ($code_retour == 'DBL')) {
-                $nb_order_ok++;
+            $this->logInFile('---> return of enrichment order & send 2 (a unique invoice/order) : '.print_r($enrich_retour, true));
+            if ($enrich_retour['code'] == 'OK' || $enrich_retour['code'] == 'DBL') {
+                $nb_order_ok = 1;
             } else {
                 $result = 'KO';
             }
 
-            //temps limite depassé
+            // time limit exceeded ?
             $tmsp_now = time();
             $this->logInFile('--->tmsp Start :'.$tmsp_start, 'ERROR');
             $this->logInFile('--->tmsp Now :'.$tmsp_now, 'ERROR');
             $this->logInFile('--->tmsp diff :'.($tmsp_now - $tmsp_start), 'ERROR');
-            if ((($tmsp_now - $tmsp_start) >= $this->nbr_max_sec_export) && ($nb_order_ok != $nb_order_total)) {
+            if (($tmsp_now - $tmsp_start) >= $this->nbr_max_sec_export && $nb_order_ok != $nb_order_total) {
                 $nbr_max_order = true;
-                $this->logInFile("---> temps limite depasse dans l'export de commandes/factures");
+                $this->logInFile("---> time limit exceeded in the export of orders/invoices, break");
             }
         }
+
         return array('result'=>$result, 'nbOrderOk'=>$nb_order_ok, 'nbrMaxOrder'=>$nbr_max_order,
-        'nbOrderTotal'=>$nb_order_total,
-        'reason'=>$enrich_retour['reason']);
+					 'nbOrderTotal'=>$nb_order_total,'reason'=>$enrich_retour['reason']);
     }
 
-    /** Methode enrichissement et envoi des commandes et des factures */
-    public function enrichOrderAndSend($facture_ec, $tmsp_start, $is_commande, $is_facture)
+    /**
+     * enrichment of ONE invoice/order and sending to dolibarr
+     */
+    public function enrichOrderAndSend($facture_ec, $tmsp_start, $export_order, $export_invoice)
     {
         $this->logInFile('--enrichOrderAndSend--');
-        $configurations = Configuration::getMultiple(array('PS_LANG_DEFAULT', 'PS_CURRENCY_DEFAULT'));
         $id_order = $facture_ec->id;
-        $export_order = $is_commande;
-        $export_invoice = $is_facture;
         $reductions = $facture_ec->total_discounts_tax_incl;
         $id_address_delivery = $this->ws_trigram_value.$this->format($facture_ec->id_address_delivery, 10);
         $id_address_invoice = $this->ws_trigram_value.$this->format($facture_ec->id_address_invoice, 10);
-        $this->logInFile('commande en cours : '.print_r($facture_ec, true));
+        $this->logInFile('invoice/order : '.print_r($facture_ec, true));
 
-        //prise du nom du transporteur
+        // taking the name of the carrier
         $id_lang = (int)Context::getContext()->language->id;
         if ($id_lang == '') {
-            $id_lang     = (int)$configurations['PS_LANG_DEFAULT'];
+            $id_lang     = $this->default_lang;
         }
         $id_transporteur = $facture_ec->id_carrier;
         $obj_carrier = new Carrier($id_transporteur, $id_lang);
         $name_transporteur = $obj_carrier->name;
-        $this->logInFile('transporteur choisi : '.$name_transporteur);
+        $this->logInFile('carrier name : '.$name_transporteur);
 
-        //gestion anti-report
+        // avoid to export again if it there is no change since last export date
         $order_ref = $this->getOrderRef($id_order);
-        $invoice_ref = $this->getInvoiceRef($id_order);
-        if (array_key_exists('date_export_order_doli', $order_ref)) {
-            if ($order_ref['date_export_order_doli'] >= max($facture_ec->date_upd, $facture_ec->date_add)) {
-                $export_order = false;
-            }
-        }
-        if (array_key_exists('date_export_invoice_doli', $invoice_ref)) {
-            if ($invoice_ref['date_export_invoice_doli'] >= max($facture_ec->date_upd, $facture_ec->date_add)) {
-                $export_invoice = false;
-            }
-        }
-        if (!$export_order && !$export_invoice) {
-            return array('code'=>'OK', 'reason'=>'');
-        }
+        if ($export_order){
+			if (array_key_exists('date_export_order_doli', $order_ref)) {
+				if ($order_ref['date_export_order_doli'] >= max($facture_ec->date_upd, $facture_ec->date_add)) {
+					$export_order = false;
+				}
+			}
+		}
+        if ($export_invoice){
+			if (array_key_exists('date_export_invoice_doli', $order_ref)) {
+				if ($order_ref['date_export_invoice_doli'] >= max($facture_ec->date_upd, $facture_ec->date_add)) {
+					$export_invoice = false;
+				}
+			}
+		}
+		if (!$export_order && !$export_invoice) return array('code'=>'OK', 'reason'=>'Not changes since last synchronization.');
 
-        // on est dans un cas d'export
-        //$idCustomer = $facture_ec->id_customer;
+        // prepare data to be exported
         $date_facture = $facture_ec->date_add;
-        $products = $facture_ec->getProducts();   // on recupère les produits de chaque commande
         $module_reglement = $facture_ec->module;
         $mode_reglement = $facture_ec->payment;
-        $this->logInFile('mode de reglement : '.print_r($mode_reglement, true));
         $statut = $this->getStatutDolibarr($facture_ec->current_state);
 
         if (_PS_VERSION_ < '1.5') {
@@ -1636,29 +1567,29 @@ class PrestashopToDolibarrPro extends Module
             $total_shipping_tax_excl = $facture_ec->total_shipping_tax_excl;
             $carrier_tax_rate = $facture_ec->carrier_tax_rate;
         }
+
+        // creation of the customer's array of the invoice:
         $obj_customer = new customer($facture_ec->id_customer);
-        //creation de l'array du customer de la facture :
         $customer = array(
-        'id_customer'=>$obj_customer->id,
-        'email'=>$obj_customer->email,
-        'firstname'=>$obj_customer->firstname,
-        'lastname'=>$obj_customer->lastname
-        );
+						'id_customer'=>$obj_customer->id,
+						'email'=>$obj_customer->email,
+						'firstname'=>$obj_customer->firstname,
+						'lastname'=>$obj_customer->lastname
+					);
 
-        $this->logInFile('Produits de la commande '.$id_order.' : '.print_r($products, true));
-
+		// products
         $product_tab = array();
-        unset($product_tab);
-
+        $products = $facture_ec->getProducts();
+        $this->logInFile('Products of the order '.$id_order.' : '.print_r($products, true));
         $i = 0;
         foreach ($products as $product) {
             $product_tab[$i]['product_id'] = $product['product_id'];
             $product_tab[$i]['product_attribute_id'] = $product['product_attribute_id'];
             $product_tab[$i]['product_quantity'] = $product['product_quantity'];
             $product_tab[$i]['tax_rate'] = $product['tax_rate'];
-            //BOG
+            // BOG
             if (_PS_VERSION_ < '1.5') {
-                //finalbug $product_tab[$i]['total_price_tax_incl'] = $product['total_price'];
+                // finalbug $product_tab[$i]['total_price_tax_incl'] = $product['total_price'];
                 $product_tab[$i]['total_price_tax_incl'] = $product['total_wt'];
                 if ($product['total_wt'] = $product['total_price']) {
                     $product_tab[$i]['total_price_tax_excl'] =
@@ -1677,69 +1608,74 @@ class PrestashopToDolibarrPro extends Module
             $i++;
         }
 
+		$code_retour = 'OK';
         $wsretour = array();
         if ($export_order) {
             $wsretour = $this->WSAddOrder(
-                $tmsp_start,
-                $id_order,
-                $customer,
-                $date_facture,
-                $product_tab,
-                $total_shipping_tax_incl,
-                $total_shipping_tax_excl,
-                $carrier_tax_rate,
-                $statut,
-                $module_reglement,
-                $mode_reglement,
-                $reductions,
-                $name_transporteur,
-                $id_address_delivery,
-                $id_address_invoice,
-                $order_ref['id_ext_order_doli']
-            );
+										$tmsp_start,
+										$id_order,
+										$customer,
+										$date_facture,
+										$product_tab,
+										$total_shipping_tax_incl,
+										$total_shipping_tax_excl,
+										$carrier_tax_rate,
+										$statut,
+										$module_reglement,
+										$mode_reglement,
+										$reductions,
+										$name_transporteur,
+										$id_address_delivery,
+										$id_address_invoice,
+										$order_ref['id_ext_order_doli']
+									);
             $code_retour = $wsretour['result']['result_code'];
-            $this->logInFile('retour WSAddOrder : '.$code_retour);
+            $this->logInFile('returned by WSAddOrder : '.$code_retour);
             if ($code_retour == 'OK') {
                 $this->setOrderRef($id_order, $wsretour['id']);
             }
         }
 
-        if ($export_invoice && (($code_retour = 'OK') || ($code_retour = 'DBL'))) {
+        if ($export_invoice && ($code_retour == 'OK' || $code_retour == 'DBL')) {
             $wsretour = $this->WSAddInvoice(
-                $tmsp_start,
-                $id_order,
-                $customer,
-                $date_facture,
-                $product_tab,
-                $total_shipping_tax_incl,
-                $total_shipping_tax_excl,
-                $carrier_tax_rate,
-                $reductions,
-                $name_transporteur,
-                $id_address_delivery,
-                $id_address_invoice,
-                $invoice_ref['id_ext_invoice_doli']
-            );
+										$tmsp_start,
+										$id_order,
+										$customer,
+										$date_facture,
+										$product_tab,
+										$total_shipping_tax_incl,
+										$total_shipping_tax_excl,
+										$carrier_tax_rate,
+										$reductions,
+										$name_transporteur,
+										$id_address_delivery,
+										$id_address_invoice,
+										$order_ref['id_ext_invoice_doli'],
+										$order_ref['id_ext_order_doli'],
+										$facture_ec->current_state
+									);
             $code_retour = $wsretour['result']['result_code'];
             if ($code_retour == 'OK') {
                 $this->setInvoiceRef($id_order, $wsretour['id']);
             }
         }
-        if (array_key_exists('result', $wsretour) && array_key_exists('result_label', $wsretour['result'])) {
+
+        if (is_array($wsretour) && !empty($wsretour['result']) && !empty($wsretour['result']['result_label'])) {
             $reason = $wsretour['result']['result_label'];
         } else {
             $reason = '';
         }
+
         return array('code'=>$code_retour, 'reason'=>$reason);
     }
 
     /**
     *
-    * methodes de communication Webservices
+    * Webservice communication methods
     *
     **/
 
-    /** Methodes test  */
+    /** Test methods  */
     public function WSVersion($wsurl)
     {
         $this->logInFile('--WSVersion--');
@@ -1763,13 +1699,13 @@ class PrestashopToDolibarrPro extends Module
 
         $parameters = array('authentication'=>$authentication);
         $result = $soapclient->call($ws_method, $parameters, $ns, '');
-        $this->logInFile('Appel du getVersions : '.$ws_dol_url.' - '.print_r($parameters, true));
-        $this->logInFile('retour du getVersions : '.print_r($result, true));
+        $this->logInFile('getVersions call : '.$ws_dol_url.' - '.print_r($parameters, true));
+        $this->logInFile('getVersions response : '.print_r($result, true));
 
         return $result;
     }
 
-    /** Methodes Clients */
+    /** Customer Methods */
     public function WSGetCustomer($client_ref)
     {
         $this->logInFile('--WSGetCustomer--');
@@ -1795,9 +1731,9 @@ class PrestashopToDolibarrPro extends Module
 
         $result_tab = $soapclient->call($ws_method, $parameters, $ns, '');
 
-        $this->logInFile('echange avec le '.$ws_method.' ('.$ws_dol_url.') ');
-        $this->logInFile('requete:'.$soapclient->request);
-        $this->logInFile('reponse du WS in tab:'.print_r($result_tab, true));
+        $this->logInFile('exchange with '.$ws_method.' method ('.$ws_dol_url.') ');
+        $this->logInFile('request:'.$soapclient->request);
+        $this->logInFile('WS response:'.print_r($result_tab, true));
 
         return $result_tab;
     }
@@ -1826,9 +1762,9 @@ class PrestashopToDolibarrPro extends Module
         $parameters = array('authentication'=>$authentication, 'thirdparty'=>$thirdparty);
         $result_tab = $soapclient->call($ws_method, $parameters, $ns, '');
 
-        $this->logInFile('echange avec le '.$ws_method.' ('.$ws_dol_url.') ');
-        $this->logInFile('requete:'.$soapclient->request);
-        $this->logInFile('reponse du WS mod_client in tab:'.print_r($result_tab, true));
+        $this->logInFile('exchange with the '.$ws_method.' method ('.$ws_dol_url.') ');
+        $this->logInFile('request:'.$soapclient->request);
+        $this->logInFile('reponse of WS mod_client:'.print_r($result_tab, true));
 
         return $result_tab;
     }
@@ -1859,8 +1795,8 @@ class PrestashopToDolibarrPro extends Module
         $result_tab = $soapclient->call($ws_method, $parameters, $ns, '');
 
         $this->logInFile('echange avec le '.$ws_method.' ('.$ws_dol_url.') ');
-        $this->logInFile('requete:'.$soapclient->request);
-        $this->logInFile('reponse du WS in tab:'.print_r($result_tab, true));
+        $this->logInFile('request:'.$soapclient->request);
+        $this->logInFile('WS response:'.print_r($result_tab, true));
 
         return $result_tab;
     }
@@ -1880,7 +1816,7 @@ class PrestashopToDolibarrPro extends Module
 
         $ws_method  = 'createProductOrService';
         $ns = 'http://www.Dolibarr.org/ns/';
-        
+
         $soapclient = new nusoap_client($ws_dol_url);
         if ($soapclient) {
             $soapclient->soap_defencoding = 'UTF-8';
@@ -1898,7 +1834,7 @@ class PrestashopToDolibarrPro extends Module
         $result_tab = $soapclient->call($ws_method, $parameters, $ns, '');
 
         $this->logInFile('echange avec le '.$ws_method.' ('.$ws_dol_url.') ');
-        $this->logInFile('requete:'.$soapclient->request);
+        $this->logInFile('request:'.$soapclient->request);
         $this->logInFile('reponse du WS add_product in tab:'.print_r($result_tab, true));
 
         return $result_tab;
@@ -1930,7 +1866,7 @@ class PrestashopToDolibarrPro extends Module
         $parameters = array('authentication'=>$authentication, 'product'=>$product);
         $result_tab = $soapclient->call($ws_method, $parameters, $ns, '');
         $this->logInFile('echange avec le '.$ws_method.' ('.$ws_dol_url.') ');
-        $this->logInFile('requete:'.$soapclient->request);
+        $this->logInFile('request:'.$soapclient->request);
         $this->logInFile('reponse du WS mod_product in tab:'.print_r($result_tab, true));
 
         return $result_tab;
@@ -1965,7 +1901,7 @@ class PrestashopToDolibarrPro extends Module
         $result_tab = $soapclient->call($ws_method, $parameters, $ns, '');
 
         $this->logInFile('echange avec le '.$ws_method.' ('.$ws_dol_url.') ');
-        $this->logInFile('requete:'.$soapclient->request);
+        $this->logInFile('request:'.$soapclient->request);
         $this->logInFile('reponse du WS getproduct in tab:'.print_r($result_tab, true));
 
         return $result_tab;
@@ -1975,20 +1911,22 @@ class PrestashopToDolibarrPro extends Module
     // Methodes Factures
     //*****************/
     public function WSAddInvoice(
-        $tmsp_start,
-        $id_order,
-        $customer,
-        $date_facture,
-        $product_tab,
-        $total_shipping_tax_incl,
-        $total_shipping_tax_excl,
-        $carrier_tax_rate,
-        $reductions,
-        $name_transporteur,
-        $id_address_delivery,
-        $id_address_invoice,
-        $doli_id
-    ) {
+								$tmsp_start,
+								$id_order,
+								$customer,
+								$date_facture,
+								$product_tab,
+								$total_shipping_tax_incl,
+								$total_shipping_tax_excl,
+								$carrier_tax_rate,
+								$reductions,
+								$name_transporteur,
+								$id_address_delivery,
+								$id_address_invoice,
+								$id_ext_invoice_doli,
+								$id_ext_order_doli,
+								$current_state
+							) {
         $this->logInFile('--WSAddInvoice--');
         $ref_order = $this->ws_trigram_value.$this->format($id_order, 10);
         //$refCustomer = $this->ws_trigram_value.$this->format($customer['id_customer'], 10);
@@ -2011,19 +1949,19 @@ class PrestashopToDolibarrPro extends Module
         $retour_dbl = array();
         $retour_dbl['result']['result_code'] = 'DBL';
 
-        //on fait un get invoice pour voir si l'on met pas un doublon
+        // we do a get invoice to avoid to create a duplicate
         $soapclient1 = new nusoap_client($ws_dol_url_invoice);
         if ($soapclient1) {
             $soapclient1->soap_defencoding = 'UTF-8';
             $soapclient1->decodeUTF8(false);
         }
-        $parameters1 = array('authentication'=>$authentication, 'id'=>$doli_id, 'ref'=>'', 'ref_ext'=>'');
+        $parameters1 = array('authentication'=>$authentication, 'id'=>$id_ext_invoice_doli, 'ref'=>'', 'ref_ext'=>'');
         $result_get_order_tab = $soapclient1->call($ws_method_get_invoice, $parameters1, $ns, '');
         $result_get_order = $result_get_order_tab['result']['result_code'];
 
-        $this->logInFile('echange avec le '.$ws_method_get_invoice.' ('.$ws_dol_url_invoice.') ');
-        $this->logInFile('requete:'.$soapclient1->request);
-        $this->logInFile('reponse du WS in tab:'.print_r($result_get_order_tab, true));
+        $this->logInFile('exchange with the '.$ws_method_get_invoice.' method ('.$ws_dol_url_invoice.') ');
+        $this->logInFile('request:'.$soapclient1->request);
+        $this->logInFile('WS response:'.print_r($result_get_order_tab, true));
 
         if ($result_get_order == 'OK') {
             return $retour_dbl;
@@ -2031,21 +1969,19 @@ class PrestashopToDolibarrPro extends Module
             return $retour_ko;
         }
 
-        //si ce nest pas un doublon alors on chope l'id du client
-        //dans Dolibarr et on le met à jour (si quelque chose a été modifié)
-        //(il passe de prospect à client)
-        $customers_to_set = array('0' =>$customer);
+		// synced customer
+		if (isset($this->already_synced_customers[$customer['id_customer']])){
+			$synced_customer = $this->already_synced_customers[$customer['id_customer']];
+		}else{
+			$synced_customer = $this->importClients(array('0' =>$customer), $tmsp_start);
+			$this->logInFile('\result of export customer of the order: '.print_r($synced_customer,true));
+			if ($synced_customer['result'] != 'OK') {
+				return $retour_ko;
+			}
+		}
+		$this->logInFile('\customer of the invoice: id_ext_doli='.$synced_customer['id_ext_doli']);
 
-        //import client
-        $result_client = $this->importClients($customers_to_set, $tmsp_start);
-        if ($result_client['result'] != 'OK') {
-            return $retour_ko;
-        }
-
-        $thirdparty_id = $result_client['id_ext_doli'];
-        $this->logInFile('Client de la commande : '.$thirdparty_id);
-
-        //si on a recup l'id du client on chope l'id des produits
+        // if we got the customer_id we save the product_id
         $lines = array();
         $line = array();
         unset($lines);
@@ -2054,102 +1990,102 @@ class PrestashopToDolibarrPro extends Module
             $ref_product = $this->ws_trigram_value.$this->format($product_tab[$i]['product_id'], 10).
             $this->format($product_tab[$i]['product_attribute_id'], 10);
 
-            //on exporte le produit
-            $this->logInFile('produit dans invoice a setter ref : '.$ref_product.' : '.print_r($product_tab[$i], true));
+            // we export the product
+            $this->logInFile('product in invoice : '.$ref_product.' : '.print_r($product_tab[$i], true));
 
-            $default_language = (int)Configuration::get('PS_LANG_DEFAULT');
-            $default_language = (int)Configuration::get('PS_LANG_DEFAULT');
-            $testproduct = new product($product_tab[$i]['product_id'], true, $default_language, null, null);
+            $testproduct = new product($product_tab[$i]['product_id'], true, $this->default_lang, null, null);
 
             $description_short = $this->noSpecialCharacterV3($testproduct->description_short);
 
             $product_to_set = array(
-                'id_product'=>$product_tab[$i]['product_id'],
-                'description_short'=>$description_short,
-                'active'=>$testproduct->active,
-                'date_upd'=>$testproduct->date_upd,
-                'date_add'=>$testproduct->date_add,
-                'reference'=>$testproduct->reference,
-                'ean13'=>$testproduct->ean13,
-                'upc'=>$testproduct->upc,
-                'id_product_attribute'=>$product_tab[$i]['product_attribute_id']
-            );
+								'id_product'=>$product_tab[$i]['product_id'],
+								'description_short'=>$description_short,
+								'active'=>$testproduct->active,
+								'date_upd'=>$testproduct->date_upd,
+								'date_add'=>$testproduct->date_add,
+								'reference'=>$testproduct->reference,
+								'ean13'=>$testproduct->ean13,
+								'upc'=>$testproduct->upc,
+								'id_product_attribute'=>$product_tab[$i]['product_attribute_id']
+							);
             $result_product = $this->importProduits($product_to_set, $tmsp_start);
             if ($result_product['result'] != 'OK') {
                 return $retour_ko;
             }
             $id_product = $result_product['id_ext_doli'];
-            $this->logInFile('Produit de la commande : '.$id_product);
+            $this->logInFile('Product of the order : '.$id_product);
 
-            //Prepration de l'objet WS pr ce produit
-            $line['type'] = '0';       // Type of line (0=product, 1=service)
-            $line['desc'] = 'Product';    // Description de la ligne
-            //$line['fk_product'] = '';  //lien vers le produit, doublon avec product_id qui l'ecrase
-            $line['unitprice'] = round($product_tab[$i]['unit_price_tax_excl'], 2);   //prix HT pour un seul produit
-            $line['total_net'] = $product_tab[$i]['total_price_tax_excl'];  //prix HT tous produits
-            $line['total_vat'] = ($product_tab[$i]['total_price_tax_incl']
-            - $product_tab[$i]['total_price_tax_excl']); //total taxe tous produits
-            $line['total'] = $product_tab[$i]['total_price_tax_incl']; //total TTC tous produits
-            //$line['vat_rate'] = $resultGetProductTab['product']['vat_rate'];   //taux tva
-            $line['vat_rate'] = $product_tab[$i]['tax_rate'];
-
-            $line['qty'] = $product_tab[$i]['product_quantity'];   //nb de produits du même type
-            $line['product_id'] = $id_product;   //lien vers le produit, id de dolibarr
-            $lines[$i] = $line;
+            // prepare the product for WS
+            $lines[$i] = array(
+							'type' => '0',       // 0=product, 1=service
+							'desc' => 'Product',
+							//'fk_product' => '',
+							'unitprice' => round($product_tab[$i]['unit_price_tax_excl'], 2),
+							'total_net' => $product_tab[$i]['total_price_tax_excl'],
+							'total_vat' => ($product_tab[$i]['total_price_tax_incl'] - $product_tab[$i]['total_price_tax_excl']),
+							'total' => $product_tab[$i]['total_price_tax_incl'],
+							//'vat_rate'] = $resultGetProductTab['product']['vat_rate'],
+							'vat_rate' => $product_tab[$i]['tax_rate'],
+							'qty' => $product_tab[$i]['product_quantity'],
+							'product_id' => $id_product   // product_id on dolibarr
+						);
         }
 
-        //Ajout du cout eventuel du transport
+        // add hipping cost as "service" on the invoice, if needed
         if ($total_shipping_tax_incl != 0) {
-            $line['type'] = '1';    // Type of line (0=product, 1=service)
-            $line['desc'] = 'delivery : '.$name_transporteur;    // Description de la ligne
-            $line['unitprice'] = $total_shipping_tax_excl;
-            //prix HT pour un seul produit (arrondi à 2 chiffres après la virgule)
-            $line['total_net'] = $total_shipping_tax_excl;  //prix HT tous produits
-            $line['total_vat'] = $total_shipping_tax_incl - $total_shipping_tax_excl; //total taxe tous produits
-            $line['total'] = $total_shipping_tax_incl; //total TTC tous produits
-            $line['vat_rate'] = $carrier_tax_rate;   //taux tva
-            $line['qty'] = '1';   //nb de produits du même type
-            $line['product_id'] = '';   //lien vers le produit, id de dolibarr
-            $lines[$i] = $line;
+            $lines[$i] = array(
+							'type' => '1',    // 0=product, 1=service
+							'desc' => 'delivery : '.$name_transporteur,
+							'unitprice' => $total_shipping_tax_excl,
+							'total_net' => $total_shipping_tax_excl,
+							'total_vat' => ($total_shipping_tax_incl - $total_shipping_tax_excl),
+							'total' => $total_shipping_tax_incl,
+							'vat_rate' => $carrier_tax_rate,
+							'qty' => '1',
+							'product_id' => '', // product_id on dolibarr
+						);
         }
 
-        //Ajout des reductions
+        // add discounts, if any
         if ($reductions != 0) {
+			$reductions = $reductions * -1;
+            $reductions_ht = round($reductions / (1 + $carrier_tax_rate / 100) , 2);
             $i++;
-            $reductions_ht = $reductions / (1 + $carrier_tax_rate / 100);
-            $reductions_ht = round($reductions_ht * -1, 2);
-            $reductions = $reductions * -1;
-            $line['type'] = '1';    // Type of line (0=product, 1=service)
-            $line['desc'] = 'Discount';    // Description de la ligne
-            $line['unitprice'] = $reductions_ht;
-            //prix HT pour un seul produit (arrondi à 2 chiffres après la virgule)
-            $line['total_net'] = $reductions_ht;  //prix HT tous produits
-            $line['total_vat'] = $reductions - $reductions_ht; //total taxe tous produits
-            $line['total'] = $reductions; //total TTC tous produits
-            $line['vat_rate'] = $carrier_tax_rate;   //taux tva
-            $line['qty'] = '1';   //nb de produits du même type
-            $line['product_id'] = '';   //lien vers le produit, id de dolibarr
-            $lines[$i] = $line;
+            $lines[$i] = array(
+							'type' => '1',    // 0=product, 1=service
+							'desc' => 'Discount',
+							'unitprice' => $reductions_ht,
+							'total_net' => $reductions_ht,
+							'total_vat' => ($reductions - $reductions_ht),
+							'total' => $reductions,
+							'vat_rate' => $carrier_tax_rate,
+							'qty' => '1',
+							'product_id' => '', // product_id on dolibarr
+						);
         }
 
         $this->logInFile('lines : '.print_r($lines, true));
 
-        //Finalisation de l'objet WS invoice
+        // dolibarr status of the invoice
+		// 		0=draft, 1=validated (need to be paid), 2=classified paid partially
+		// 		3=classified abandoned and no payment done (close_code = 'badcustomer', 'abandon' || 'replaced')
+		$status = in_array($current_state,array('2','11')) ? '1' : '0'; // validated only if on prestashop is "payment accepted" (2) or "remote payment accepted" (11)
+
+        // prepare invoice object for webservice
         $invoice = array(
-            'ref_ext'=>$ref_order,
-            'thirdparty_id'=>$thirdparty_id,  //id de dolibarr
-            'date'=>$date_facture,
-            'type'=>'0',
-            //0=Standard invoice, 1=Replacement invoice, 2=Credit note invoice, 3=Deposit invoice, 4=Proforma invoice
-            'note_private'=>'imported by Prestashop',
-            'note_public'=>'',
-            'status'=>'1',        //! 0=draft, 1=validated (need to be paid), 2=classified paid partially
-            //! 3=classified abandoned and no payment done (close_code = 'badcustomer', 'abandon' || 'replaced')
-            'project_id'=>'', //c'est quoi ?
-            'id_address_delivery' => $id_address_delivery,
-            'id_address_invoice' => $id_address_invoice,
-            'lines'=>$lines
-        );
+						'ref_ext' => $ref_order,
+						'thirdparty_id' => $synced_customer['id_ext_doli'],  // id on dolibarr
+						'date' => $date_facture,
+						'type' => '0', // 0=Standard invoice, 1=Replacement invoice, 2=Credit note invoice, 3=Deposit invoice, 4=Proforma invoice
+						'note_private' => 'Imported by Prestashop on '.date('d/m/Y H:i:s'),
+						'note_public' => '',
+						'status' => $status,
+						'project_id' => '',
+						'id_address_delivery' => $id_address_delivery,
+						'id_address_invoice' => $id_address_invoice,
+						'lines' => $lines,
+						'id_ext_order_doli' => $id_ext_order_doli
+					);
 
         $soapclient4 = new nusoap_client($ws_dol_url_invoice);
         if ($soapclient4) {
@@ -2159,34 +2095,34 @@ class PrestashopToDolibarrPro extends Module
         $parameters4 = array('authentication'=>$authentication, 'invoice'=>$invoice);
         $result_create_invoice_tab = $soapclient4->call($ws_method_create_invoice, $parameters4, $ns, '');
 
-        $this->logInFile('echange avec le '.$ws_method_create_invoice);
-        $this->logInFile('requete:'.$soapclient4->request);
-        $this->logInFile('reponse du WS in tab:'.print_r($result_create_invoice_tab['result'], true));
+        $this->logInFile('exchange with the '.$ws_method_create_invoice.' method');
+        $this->logInFile('request:'.$soapclient4->request);
+        $this->logInFile('WS response:'.print_r($result_create_invoice_tab['result'], true));
 
         return $result_create_invoice_tab;
     }
 
     /*******************
-    // Methodes Commandes
+    // Orders
     //*****************/
     public function WSAddOrder(
-        $tmsp_start,
-        $id_order,
-        $customer,
-        $date_facture,
-        $product_tab,
-        $total_shipping_tax_incl,
-        $total_shipping_tax_excl,
-        $carrier_tax_rate,
-        $statut = 0,
-        $module_reglement = 0,
-        $mode_reglement = 0,
-        $reductions = 0,
-        $name_transporteur = 0,
-        $id_address_delivery = 0,
-        $id_address_invoice = 0,
-        $doli_id = 0
-    ) {
+								$tmsp_start,
+								$id_order,
+								$customer,
+								$date_facture,
+								$product_tab,
+								$total_shipping_tax_incl,
+								$total_shipping_tax_excl,
+								$carrier_tax_rate,
+								$statut = 0,
+								$module_reglement = 0,
+								$mode_reglement = 0,
+								$reductions = 0,
+								$name_transporteur = 0,
+								$id_address_delivery = 0,
+								$id_address_invoice = 0,
+								$id_ext_order_doli = 0
+							) {
         $this->logInFile('--WSAddOrder--');
         $ref_order = $this->ws_trigram_value.$this->format($id_order, 10);
         //$refCustomer = $this->ws_trigram_value.$this->format($customer['id_customer'], 10);
@@ -2206,195 +2142,189 @@ class PrestashopToDolibarrPro extends Module
         $retour_dbl = array();
         $retour_dbl['result']['result_code'] = 'DBL';
 
-        //on fait un get order pour voir si l'on met pas un doublon
-        $soapclient1 = new nusoap_client($ws_dol_url_order);
-        if ($soapclient1) {
-            $soapclient1->soap_defencoding = 'UTF-8';
-            $soapclient1->decodeUTF8(false);
-        }
-        $parameters1 = array('authentication'=>$authentication, 'id'=>$doli_id, 'ref'=>'', 'ref_ext'=>'');
-        $result_get_order_tab = $soapclient1->call($ws_method_get_order, $parameters1, $ns, '');
-        $result_get_order = $result_get_order_tab['result']['result_code'];
+        // we make a get order to see if we don't put a duplicate
+        if ($id_ext_order_doli!=0){
+			$soapclient1 = new nusoap_client($ws_dol_url_order);
+			if ($soapclient1) {
+				$soapclient1->soap_defencoding = 'UTF-8';
+				$soapclient1->decodeUTF8(false);
+			}
+			$parameters1 = array('authentication'=>$authentication, 'id'=>$id_ext_order_doli, 'ref'=>'', 'ref_ext'=>'');
+			$result_get_order_tab = $soapclient1->call($ws_method_get_order, $parameters1, $ns, '');
+			$result_get_order = $result_get_order_tab['result']['result_code'];
 
-        $this->logInFile('echange avec le '.$ws_method_get_order.' ('.$ws_dol_url_order.') ');
-        $this->logInFile('requete:'.$soapclient1->request);
-        $this->logInFile('reponse du WS in tab:'.print_r($result_get_order_tab, true));
+			$this->logInFile('echange avec le '.$ws_method_get_order.' ('.$ws_dol_url_order.') ');
+			$this->logInFile('parameters: '.print_r($parameters1,true));
+			$this->logInFile('request:'.$soapclient1->request);
+			$this->logInFile('WS response after getOrder:'.print_r($result_get_order_tab, true));
+
+			if ($result_get_order == 'OK') {
+				// validation of the order if not already validated
+				$parameters_status = array('authentication'=>$authentication, 'id'=>$id_ext_order_doli, 'status'=>$statut);
+				$result_update_order_statut_tab = $soapclient1->call($ws_method_update_order_statut,$parameters_status,$ns,'');
+
+				$this->logInFile('exchange with the '.$ws_method_update_order_statut.' method ('.$ws_dol_url_order.') ');
+				$this->logInFile('request:'.$soapclient1->request);
+				$this->logInFile('WS response after updateOrder:'.print_r($result_update_order_statut_tab, true));
+
+				if ($result_update_order_statut_tab['result']['result_code'] == 'KO') {
+					return $retour_ko;
+				}
+				return $retour_dbl;
+			} elseif ($result_get_order == 'KO') {
+				return $retour_ko;
+			}
+		}
 
         $result_create_order_tab = array();
         $result_update_order_statut_tab = array();
-        if ($result_get_order == 'OK') {
-            // validation de la commande si pas deja validée
-            $parameters_status = array('authentication'=>$authentication, 'id'=>$doli_id, 'status'=>$statut);
-            $result_update_order_statut_tab = $soapclient1->call(
-                $ws_method_update_order_statut,
-                $parameters_status,
-                $ns,
-                ''
-            );
-            $this->logInFile('echange avec le '.$ws_method_update_order_statut.' ('.$ws_dol_url_order.') ');
-            $this->logInFile('requete:'.$soapclient1->request);
-            $this->logInFile('reponse du WS in tab:'.print_r($result_update_order_statut_tab, true));
-            if ($result_update_order_statut_tab['result']['result_code'] == 'KO') {
-                return $retour_ko;
-            }
-            return $retour_dbl;
-        } elseif ($result_get_order == 'KO') {
-            return $retour_ko;
-        } else {
-            $customers_to_set = array('0' =>$customer);
 
-            //import client
-            $result_client = $this->importClients($customers_to_set, $tmsp_start);
-            if ($result_client['result'] != 'OK') {
-                return $retour_ko;
-            }
+		// synced customer
+		if (isset($this->already_synced_customers[$customer['id_customer']])){
+			$synced_customer = $this->already_synced_customers[$customer['id_customer']];
+		}else{
+			$synced_customer = $this->importClients(array('0' =>$customer), $tmsp_start);
+			$this->logInFile('\result of export customer of the order: '.print_r($synced_customer,true));
+			if ($synced_customer['result'] != 'OK') {
+				return $retour_ko;
+			}
+		}
+		$this->logInFile('\customer of the order: id_ext_dloi='.$synced_customer['id_ext_doli']);
 
-            $thirdparty_id = $result_client['id_ext_doli'];
-            $this->logInFile('Client de la commande : '.$thirdparty_id);
+		// if we got the customer id we grab the product id
+		$lines = array();
+		unset($lines);
+		$line = array();
+		//for ($i = 0; $product_tab[$i]['product_id'] != ''; $i++)
+		for ($i = 0; array_key_exists($i, $product_tab) && $product_tab[$i]['product_id'] != ''; $i++) {
+			$ref_product = $this->ws_trigram_value.$this->format($product_tab[$i]['product_id'], 10).
+			$this->format($product_tab[$i]['product_attribute_id'], 10);
 
-            //si on a recup l'id du client on chope l'id des produits
-            $lines = array();
-            unset($lines);
-            $line = array();
-            //for ($i = 0; $product_tab[$i]['product_id'] != ''; $i++)
-            for ($i = 0; array_key_exists($i, $product_tab) && $product_tab[$i]['product_id'] != ''; $i++) {
-                $ref_product = $this->ws_trigram_value.$this->format($product_tab[$i]['product_id'], 10).
-                $this->format($product_tab[$i]['product_attribute_id'], 10);
+			// we export the product
+			$this->logInFile('Product in invoice, ref : '.$ref_product.' -> '.print_r($product_tab[$i], true));
+			$testproduct = new product($product_tab[$i]['product_id'], true, $this->default_lang, null, null);
+			$description_short = $this->noSpecialCharacterV3($testproduct->description_short);
+			$product_to_set = array(
+				'id_product'=>$product_tab[$i]['product_id'],
+				'description_short'=>$description_short,
+				'active'=>$testproduct->active,
+				'date_upd'=>$testproduct->date_upd,
+				'date_add'=>$testproduct->date_add,
+				'reference'=>$testproduct->reference,
+				'ean13'=>$testproduct->ean13,
+				'upc'=>$testproduct->upc,
+				'id_product_attribute'=>$product_tab[$i]['product_attribute_id']
+			);
+			$result_product = $this->importProduits($product_to_set, $tmsp_start);
+			if ($result_product['result'] != 'OK') {
+				return $retour_ko;
+			}
+			$id_product = $result_product['id_ext_doli'];
+			$this->logInFile('Product of the order : '.$id_product);
 
-                //on exporte le produit
-                $this->logInFile(
-                    'produit dans invoice a setter ref : '.$ref_product.' : '.print_r($product_tab[$i], true)
-                );
+			$line = array();
+			$line['type'] = '0';       // Type of line (0=product, 1=service)
+			$line['desc'] = 'Product';    // Description of the line
+			//$line['fk_product'] = '';  // link to product, duplicate with product_id which overwrites it
+			$line['unitprice'] = round($product_tab[$i]['unit_price_tax_excl'], 2); // price excluding tax for a single product
+			$line['total_net'] = $product_tab[$i]['total_price_tax_excl'];  // price all products, exlcuded tax
+			$line['total_vat'] = ($product_tab[$i]['total_price_tax_incl'] - $product_tab[$i]['total_price_tax_excl']); // total tax all products
+			$line['total'] = $product_tab[$i]['total_price_tax_incl']; // total price including tax of all products
+			//$line['vat_rate'] = $resultGetProductTab['product']['vat_rate'];
+			$line['vat_rate'] = $product_tab[$i]['tax_rate'];
+			$line['qty'] = $product_tab[$i]['product_quantity'];   // number of products of the same type
+			$line['product_id'] = $id_product;   // link to product, dolibarr id
+			$lines[$i] = $line;
+		}
 
-                $default_language = (int)Configuration::get('PS_LANG_DEFAULT');
-                $testproduct = new product($product_tab[$i]['product_id'], true, $default_language, null, null);
-                $description_short = $this->noSpecialCharacterV3($testproduct->description_short);
-                $product_to_set = array(
-                    'id_product'=>$product_tab[$i]['product_id'],
-                    'description_short'=>$description_short,
-                    'active'=>$testproduct->active,
-                    'date_upd'=>$testproduct->date_upd,
-                    'date_add'=>$testproduct->date_add,
-                    'reference'=>$testproduct->reference,
-                    'ean13'=>$testproduct->ean13,
-                    'upc'=>$testproduct->upc,
-                    'id_product_attribute'=>$product_tab[$i]['product_attribute_id']
-                );
-                $result_product = $this->importProduits($product_to_set, $tmsp_start);
-                if ($result_product['result'] != 'OK') {
-                    return $retour_ko;
-                }
-                $id_product = $result_product['id_ext_doli'];
-                $this->logInFile('Produit de la commande : '.$id_product);
+		// Addition of the possible cost of transport
+		if ($total_shipping_tax_incl != 0) {
+			$line['type'] = '1';       // Type of line (0=product, 1=service)
+			$line['desc'] = 'delivery : '.$name_transporteur;    // Description of the line
+			$line['unitprice'] = $total_shipping_tax_excl; // price excluding VAT for a single product (rounded to 2 digits after the decimal point)
+			$line['total_net'] = $total_shipping_tax_excl;  // price excluding VAT for all products
+			$line['total_vat'] = $total_shipping_tax_incl - $total_shipping_tax_excl; // total ox VAT of all products
+			$line['total'] = $total_shipping_tax_incl; // total of all products price including VAT
+			$line['vat_rate'] = $carrier_tax_rate;
+			$line['qty'] = '1';   // number of products of the same type
+			$line['product_id'] = '';   // link to product, dolibarr id
+			$lines[$i] = $line;
+		}
 
-                $line = array();
-                $line['type'] = '0';       // Type of line (0=product, 1=service)
-                $line['desc'] = 'Product';    // Description de la ligne
-                //$line['fk_product'] = '';  //lien vers le produit, doublon avec product_id qui l'ecrase
-                $line['unitprice'] = round($product_tab[$i]['unit_price_tax_excl'], 2); //prix HT pour un seul produit
-                $line['total_net'] = $product_tab[$i]['total_price_tax_excl'];  //prix HT tous produits
-                $line['total_vat'] = ($product_tab[$i]['total_price_tax_incl'] -
-                $product_tab[$i]['total_price_tax_excl']); //total taxe tous produits
-                $line['total'] = $product_tab[$i]['total_price_tax_incl']; //total TTC tous produits
-                //$line['vat_rate'] = $resultGetProductTab['product']['vat_rate'];   //taux tva
-                $line['vat_rate'] = $product_tab[$i]['tax_rate'];
-                $line['qty'] = $product_tab[$i]['product_quantity'];   //nb de produits du même type
-                $line['product_id'] = $id_product;   //lien vers le produit, id de dolibarr
-                $lines[$i] = $line;
-            }
+		// Addition of reductions
+		if ($reductions != 0) {
+			$i++;
+			$reductions_ht = $reductions / (1 + $carrier_tax_rate / 100);
+			$reductions_ht = round($reductions_ht * -1, 2);
+			$reductions = $reductions * -1;
+			$line['type'] = '1';       // Type of line (0=product, 1=service)
+			$line['desc'] = 'Discount';    // Description of the line
+			$line['unitprice'] = $reductions_ht; // price excluding VAT for a single product (rounded to 2 digits after the decimal point)
+			$line['total_net'] = $reductions_ht;  // price excluding VAT for all products
+			$line['total_vat'] = $reductions - $reductions_ht; // total ox VAT of all products
+			$line['total'] = $reductions; // total of all products price including VAT
+			$line['vat_rate'] = $carrier_tax_rate;
+			$line['qty'] = '1';   // number of products of the same type
+			$line['product_id'] = '';   // link to product, dolibarr id
+			$lines[$i] = $line;
+		}
+		$this->logInFile('lines : '.print_r($lines, true));
 
-            //Ajout du cout eventuel du transport
-            if ($total_shipping_tax_incl != 0) {
-                $line['type'] = '1';       // Type of line (0=product, 1=service)
-                $line['desc'] = 'delivery : '.$name_transporteur;    // Description de la ligne
-                $line['unitprice'] = $total_shipping_tax_excl;
-                //prix HT pour un seul produit (arrondi à 2 chiffres après la virgule)
-                $line['total_net'] = $total_shipping_tax_excl;  //prix HT tous produits
-                $line['total_vat'] = $total_shipping_tax_incl - $total_shipping_tax_excl; //total taxe tous produits
-                $line['total'] = $total_shipping_tax_incl; //total TTC tous produits
-                $line['vat_rate'] = $carrier_tax_rate;   //taux tva
-                $line['qty'] = '1';   //nb de produits du même type
-                $line['product_id'] = '';   //lien vers le produit, id de dolibarr
-                $lines[$i] = $line;
-            }
+		// we send the invoice
+		$module_reglement = $this->noSpecialCharacterV3($module_reglement);
+		$mode_reglement = $this->noSpecialCharacterV3($mode_reglement);
+		$module_reglement_code = Tools::substr($module_reglement, 0, 6);
 
-            //Ajout des reductions
-            if ($reductions != 0) {
-                $i++;
-                $reductions_ht = $reductions / (1 + $carrier_tax_rate / 100);
-                $reductions_ht = round($reductions_ht * -1, 2);
-                $reductions = $reductions * -1;
-                $line['type'] = '1';       // Type of line (0=product, 1=service)
-                $line['desc'] = 'Discount';    // Description de la ligne
-                $line['unitprice'] = $reductions_ht;
-                //prix HT pour un seul produit (arrondi à 2 chiffres après la virgule)
-                $line['total_net'] = $reductions_ht;  //prix HT tous produits
-                $line['total_vat'] = $reductions - $reductions_ht; //total taxe tous produits
-                $line['total'] = $reductions; //total TTC tous produits
-                $line['vat_rate'] = $carrier_tax_rate;   //taux tva
-                $line['qty'] = '1';   //nb de produits du même type
-                $line['product_id'] = '';   //lien vers le produit, id de dolibarr
-                $lines[$i] = $line;
-            }
+		$order = array(
+					'ref_ext'=>$ref_order,
+					'thirdparty_id'=>$synced_customer['id_ext_doli'],  // dolibarr id
+					'date'=>$date_facture,
+					'type'=>'0', //0=Standard invoice, 1=Replacement invoice, 2=Credit note invoice, 3=Deposit invoice, 4=Proforma invoice
+					'note_private'=>'Imported by Prestashop '.date('d/m/Y H:i:s'),
+					'note_public'=> '',
+					'status'=>$statut,
+					'project_id'=> '',
+					'remise' => '',
+					'remise_percent' => '',
+					'remise_absolue' => '',
+					'source' => '',
+					'mode_reglement_id' => '',
+					'mode_reglement_code' => $module_reglement_code,
+					'mode_reglement' => $mode_reglement,
+					'cond_reglement_id' => '',
+					'cond_reglement_code' => '',
+					'cond_reglement' => '',
+					'cond_reglement_doc' => '',
+					'date_livraison' => '',
+					'fk_delivery_address' => '',
+					'demand_reason_id' => '',
+					'id_address_delivery' => $id_address_delivery,
+					'id_address_invoice' => $id_address_invoice,
+					'lines'=>$lines
+				);
 
-            $this->logInFile('lines : '.print_r($lines, true));
-            //on envoie la creation de facture
-            $module_reglement = $this->noSpecialCharacterV3($module_reglement);
-            $mode_reglement = $this->noSpecialCharacterV3($mode_reglement);
+		$soapclient4 = new nusoap_client($ws_dol_url_order);
+		if ($soapclient4) {
+			$soapclient4->soap_defencoding = 'UTF-8';
+			$soapclient4->decodeUTF8(false);
+		}
+		$parameters4 = array('authentication'=>$authentication, 'order'=>$order);
+		$result_create_order_tab = $soapclient4->call($ws_method_create_order, $parameters4, $ns, '');
 
-            $module_reglement_code = Tools::substr($module_reglement, 0, 6);
-            
-            $order = array(
-            'ref_ext'=>$ref_order,
-            'thirdparty_id'=>$thirdparty_id,  //id de dolibarr
-            'date'=>$date_facture,
-            'type'=>'0',
-            //0=Standard invoice, 1=Replacement invoice, 2=Credit note invoice, 3=Deposit invoice, 4=Proforma invoice
-            'note_private'=>'imported by Prestashop',
-            'note_public'=> '',
-            'status'=>$statut,
-            'project_id'=> '', //c'est quoi ?
-            'remise' => '',
-            'remise_percent' => '',
-            'remise_absolue' => '',
-            'source' => '',
-            'mode_reglement_id' => '',
-            'mode_reglement_code' => $module_reglement_code,
-            'mode_reglement' => $mode_reglement,
-            'cond_reglement_id' => '',
-            'cond_reglement_code' => '',
-            'cond_reglement' => '',
-            'cond_reglement_doc' => '',
-            'date_livraison' => '',
-            'fk_delivery_address' => '',
-            'demand_reason_id' => '',
-            'id_address_delivery' => $id_address_delivery,
-            'id_address_invoice' => $id_address_invoice,
-            'lines'=>$lines
-            );
+		$this->logInFile('exchange with the '.$ws_method_create_order.' method :'.$ws_dol_url_order);
+		$this->logInFile('parameters4: '.print_r($parameters4,true));
+		$this->logInFile('request:'.$soapclient4->request);
+		$this->logInFile('WS response after createOrder:'.print_r($result_create_order_tab, true));
 
-            $soapclient4 = new nusoap_client($ws_dol_url_order);
-            if ($soapclient4) {
-                $soapclient4->soap_defencoding = 'UTF-8';
-                $soapclient4->decodeUTF8(false);
-            }
-            $parameters4 = array('authentication'=>$authentication, 'order'=>$order);
-            $result_create_order_tab = $soapclient4->call($ws_method_create_order, $parameters4, $ns, '');
-
-            $this->logInFile('echange avec le '.$ws_method_create_order." : $ws_dol_url_order");
-            $this->logInFile('requete:'.$soapclient4->request);
-            $this->logInFile('reponse du WS in tab:'.print_r($result_create_order_tab['result'], true));
-        }
         return $result_create_order_tab;
     }
 
     private function noSpecialCharacterV2($chaine)
     {
         $this->logInFile('--noSpecialCharacterV2--');
-        //decode en utf8
         $chaine = utf8_decode($chaine);
 
-        //  les caracètres speciaux (aures que lettres et chiffres en fait)
+        //  special characters (in fact only letters and numbers)
         $chaine = str_replace('<b>', '', $chaine);
         $chaine = str_replace('</b>', '', $chaine);
         $chaine = str_replace('<i>', '', $chaine);
@@ -2409,7 +2339,7 @@ class PrestashopToDolibarrPro extends Module
         $chaine = str_replace('</p>', '', $chaine);
         $chaine = str_replace('<br />', '. ', $chaine);
 
-        //  les accents
+        //  accents
         $chaine = trim($chaine);
         $chaine_a = 'ÀÁÂÃÄÅàáâãäåÒÓÔÕÖØòóôõöøÈÉÊ';
         $chaine_a .= 'ËèéêëÇçÌÍÎÏìíîïÙÚÛÜùúûüÿÑñ';
@@ -2424,7 +2354,7 @@ class PrestashopToDolibarrPro extends Module
     private function noSpecialCharacterV3($str_entree)
     {
         $this->logInFile('--noSpecialCharacterV3--');
-        //  les caracètres speciaux (aures que lettres et chiffres en fait)
+        //  special characters (in fact only letters and numbers)
         $str_entree = str_replace('<b>', '', $str_entree);
         $str_entree = str_replace('</b>', '', $str_entree);
         $str_entree = str_replace('<i>', '', $str_entree);
@@ -2466,12 +2396,12 @@ class PrestashopToDolibarrPro extends Module
 
     /**
     *
-    *  METHODES DE HOOK
+    *  HOOK methods
     *
     */
 
     /**
-    * hook categories
+    * categories hook
     */
     public function hookCategoryAddition()
     {
@@ -2498,23 +2428,23 @@ class PrestashopToDolibarrPro extends Module
     }
 
     /**
-    * hook clients
+    * customers hook
     */
     public function hookCreateAccount($params)
     {
         $this->logInFile('--hookCreateAccount--');
         $tmsp_start = time();
         if ($this->is_checked_synch_customer == 'true') {
-            //création de l'array du customer à créer :
-            $customer = array('0' => array(
-            'id_customer'=>$params['newCustomer']->id,
-            'email'=>$params['newCustomer']->email,
-            'firstname'=>$params['newCustomer']->firstname,
-            'lastname'=>$params['newCustomer']->lastname
-            ));
+            // customer's array to create
+            $customers = array('0' => array(
+										'id_customer'=>$params['newCustomer']->id,
+										'email'=>$params['newCustomer']->email,
+										'firstname'=>$params['newCustomer']->firstname,
+										'lastname'=>$params['newCustomer']->lastname
+									));
 
-            //import client
-            $result = $this->importClients($customer, $tmsp_start);
+            // import customer
+            $result = $this->importClients($customers, $tmsp_start);
 
             if ($result['nbrMaxClient'] == true) {
                 Logger::addLog(
@@ -2530,7 +2460,7 @@ class PrestashopToDolibarrPro extends Module
     }
 
     /**
-    * hook commandes
+    * orders hook
     */
 
     public function hookUpdateOrderStatus($params)
@@ -2545,30 +2475,30 @@ class PrestashopToDolibarrPro extends Module
             $this->logInFile('hookUpdateOrderStatus : '.print_r($params, true));
             if (($this->is_checked_synch_invoice == 'true') || ($this->is_checked_synch_order == 'true')) {
                 $result = $this->importFacturesOrCommandes(
-                    $order,
-                    $tmsp_start,
-                    $this->is_checked_synch_order,
-                    $this->is_checked_synch_invoice
-                );
-                $this->logInFile('retour du hookupdateorderstatus : '.print_r($result, true));
+									$order,
+									$tmsp_start,
+									$this->is_checked_synch_order,
+									$this->is_checked_synch_invoice
+								);
+                $this->logInFile('hookupdateorderstatus response: '.print_r($result, true));
                 if ($result['nbrMaxOrder'] == true) {
                     Logger::addLog('prestashopdolibarr module order phase shift', 1, null, 'order', $order_id, false);
                 }
             }
         }
-        
+
     }
 
     /**
     public function hookNewOrder($params)
-    {    
+    {
         $this->logInFile("hookNewOrder : ".print_r($params['objOrder'], true));
         if ($this->is_checked_synch_order == 'true')
             $this->_importCommandes($params['objOrder']);
     }*/
 
     /**
-    * hook confirmation commande pour facturation
+    * order confirmation for invoicing hook
     */
     public function hookActionValidateOrder($params)
     {
@@ -2578,11 +2508,11 @@ class PrestashopToDolibarrPro extends Module
         $this->logInFile('hookActionValidateOrder : '.print_r($params['order'], true));
         if (($this->is_checked_synch_invoice == 'true') || ($this->is_checked_synch_order == 'true')) {
             $result = $this->importFacturesOrCommandes(
-                $params['order'],
-                $tmsp_start,
-                $this->is_checked_synch_order,
-                $this->is_checked_synch_invoice
-            );
+														$params['order'],
+														$tmsp_start,
+														$this->is_checked_synch_order,
+														$this->is_checked_synch_invoice
+													);
             if ($result['nbrMaxOrder'] == true) {
                 Logger::addLog('prestashopdolibarr module order phase shift', 1, null, 'order', $order_id, false);
             }
@@ -2590,7 +2520,7 @@ class PrestashopToDolibarrPro extends Module
     }
 
     /**
-    * hook produits
+    * products hook
     */
     public function hookUpdateProduct($params)
     {
@@ -2603,25 +2533,24 @@ class PrestashopToDolibarrPro extends Module
         $this->logInFile('hookUpdateProduct: '.$product_id);
 
         if ($this->is_checked_synch_product == 'true' || $this->is_checked_synch_stock == 'true') {
-            $default_language = (int)Configuration::get('PS_LANG_DEFAULT');
-            $testproduct = new product($product_id, true, $default_language, null, null);
+            $testproduct = new product($product_id, true, $this->default_lang, null, null);
             $product = array(
-            'id_product'=>$product_id,
-            'description_short'=>$testproduct->description_short,
-            'active'=>$testproduct->active,
-            'date_upd'=>$testproduct->date_upd,
-            'date_add'=>$testproduct->date_add,
-            'reference'=>$testproduct->reference,
-            'ean13'=>$testproduct->ean13,
-            'upc'=>$testproduct->upc
-            );
+							'id_product'=>$product_id,
+							'description_short'=>$testproduct->description_short,
+							'active'=>$testproduct->active,
+							'date_upd'=>$testproduct->date_upd,
+							'date_add'=>$testproduct->date_add,
+							'reference'=>$testproduct->reference,
+							'ean13'=>$testproduct->ean13,
+							'upc'=>$testproduct->upc
+							);
 
             $result = $this->importProduits($product, $tmsp_start);
             if ($result['nbrMaxProduct'] == true) {
                 Logger::addLog('prestashopdolibarr module product phase shift', 1, null, 'product', $product_id, false);
             }
         }
-                
+
     }
 
     public function hookAddproduct($params)
@@ -2635,18 +2564,17 @@ class PrestashopToDolibarrPro extends Module
         $this->logInFile('hookAddproduct: ');
 
         if ($this->is_checked_synch_product == 'true') {
-            $default_language = (int)Configuration::get('PS_LANG_DEFAULT');
-            $testproduct = new product($product_id, true, $default_language, null, null);
+            $testproduct = new product($product_id, true, $this->default_lang, null, null);
             $product = array(
-            'id_product'=>$product_id,
-            'description_short'=>$testproduct->description_short,
-            'active'=>$testproduct->active,
-            'date_upd'=>$testproduct->date_upd,
-            'date_add'=>$testproduct->date_add,
-            'reference'=>$testproduct->reference,
-            'ean13'=>$testproduct->ean13,
-            'upc'=>$testproduct->upc
-            );
+							'id_product'=>$product_id,
+							'description_short'=>$testproduct->description_short,
+							'active'=>$testproduct->active,
+							'date_upd'=>$testproduct->date_upd,
+							'date_add'=>$testproduct->date_add,
+							'reference'=>$testproduct->reference,
+							'ean13'=>$testproduct->ean13,
+							'upc'=>$testproduct->upc
+							);
 
             $result = $this->importProduits($product, $tmsp_start);
             if ($result['nbrMaxProduct'] == true) {
@@ -2655,7 +2583,7 @@ class PrestashopToDolibarrPro extends Module
         }
     }
 
-    /**Fonctions non gerees pour les versions de prestashop < 1.5*/
+    /** Unmanaged functions for versions of prestashop < 1.5 */
 
     public function getProductAttributesIds($id_product, $shop_only = false)
     {
@@ -2678,18 +2606,18 @@ class PrestashopToDolibarrPro extends Module
 
         // selects different names, if it is a combination
         if ($id_product_attribute) {
-            $query = "select IFNULL(CONCAT(pl.name, ' : ', GROUP_CONCAT(DISTINCT agl.`name`, ' - ', 
+            $query = "select IFNULL(CONCAT(pl.name, ' : ', GROUP_CONCAT(DISTINCT agl.`name`, ' - ',
             al.name SEPARATOR ', '))";
             $query .= ',pl.name) as name FROM `'._DB_PREFIX_.'product_attribute` pa
             INNER JOIN `'._DB_PREFIX_.'product_lang` pl on pl.id_product = pa.id_product AND pl.id_lang = '.
-            (int)$id_lang.' 
-            LEFT JOIN `'._DB_PREFIX_.'product_attribute_combination` `pac` on 
+            (int)$id_lang.'
+            LEFT JOIN `'._DB_PREFIX_.'product_attribute_combination` `pac` on
             pac.id_product_attribute = pa.id_product_attribute
             LEFT JOIN `'._DB_PREFIX_.'attribute` `atr` on atr.id_attribute = pac.id_attribute
             LEFT JOIN `'._DB_PREFIX_.'attribute_lang` `al` on al.id_attribute = atr.id_attribute AND al.id_lang = '.
-            (int)$id_lang.' 
-            LEFT JOIN `'._DB_PREFIX_.'attribute_group_lang` `agl` on agl.id_attribute_group = atr.id_attribute_group 
-             AND agl.id_lang = '.(int)$id_lang.' 
+            (int)$id_lang.'
+            LEFT JOIN `'._DB_PREFIX_.'attribute_group_lang` `agl` on agl.id_attribute_group = atr.id_attribute_group
+             AND agl.id_lang = '.(int)$id_lang.'
             where pa.id_product = '.(int)$id_product.' AND pa.id_product_attribute = '.(int)$id_product_attribute;
         } else {
             // || just adds a 'where' clause for a simple product
@@ -2701,18 +2629,18 @@ class PrestashopToDolibarrPro extends Module
         $result = Db::getInstance()->executeS($query);
 
         if ((!$result) || ($result[0]['name'] == '')) {
-            //pas de description ds la langue par défaut => on prend la premiere qui vient
+            // no description in the default language => we take the first one that comes
             if ($id_product_attribute) {
                 $query = "select IFNULL(CONCAT(pl.name, ' : ', GROUP_CONCAT(DISTINCT agl.`name`, ' - ',
                 al.name SEPARATOR ', ')),pl.name) as name";
                 $query .= ' FROM `'._DB_PREFIX_.'product_attribute` pa
-                INNER JOIN `'._DB_PREFIX_.'product_lang` pl on pl.id_product = pa.id_product 
-                LEFT JOIN `'._DB_PREFIX_.'product_attribute_combination` `pac` 
+                INNER JOIN `'._DB_PREFIX_.'product_lang` pl on pl.id_product = pa.id_product
+                LEFT JOIN `'._DB_PREFIX_.'product_attribute_combination` `pac`
                 on pac.id_product_attribute = pa.id_product_attribute
                 LEFT JOIN `'._DB_PREFIX_.'attribute` `atr` on atr.id_attribute = pac.id_attribute
-                LEFT JOIN `'._DB_PREFIX_.'attribute_lang` `al` on al.id_attribute = atr.id_attribute 
-                LEFT JOIN `'._DB_PREFIX_.'attribute_group_lang` `agl` 
-                on agl.id_attribute_group = atr.id_attribute_group 
+                LEFT JOIN `'._DB_PREFIX_.'attribute_lang` `al` on al.id_attribute = atr.id_attribute
+                LEFT JOIN `'._DB_PREFIX_.'attribute_group_lang` `agl`
+                on agl.id_attribute_group = atr.id_attribute_group
                 where pa.id_product = '.(int)$id_product.' AND pa.id_product_attribute = '.(int)$id_product_attribute;
             } else {
                 // || just adds a 'where' clause for a simple product
@@ -2735,14 +2663,14 @@ class PrestashopToDolibarrPro extends Module
             $id_country = Country::getDefaultCountryId();
             $query = '
             SELECT     tax.rate as rate
-            FROM 
+            FROM
                     '._DB_PREFIX_.'product product, '._DB_PREFIX_.'tax tax, '._DB_PREFIX_.'tax_rule taxrule
-            WHERE 
-                product.id_product = '.(int)$id_product.' 
-                AND product.id_tax_rules_group = taxrule.id_tax_rules_group 
-                AND taxrule.id_country = '.(int)$id_country.'  
-                AND taxrule.id_state = 0 
-                AND taxrule.id_tax = tax.id_tax 
+            WHERE
+                product.id_product = '.(int)$id_product.'
+                AND product.id_tax_rules_group = taxrule.id_tax_rules_group
+                AND taxrule.id_country = '.(int)$id_country.'
+                AND taxrule.id_state = 0
+                AND taxrule.id_tax = tax.id_tax
             ';
         }
 
@@ -2756,25 +2684,25 @@ class PrestashopToDolibarrPro extends Module
     {
         $this->logInFile('--getCarrierTaxes--');
         if (_PS_VERSION_ < '1.4.0.5') {
-            $query = 'SELECT rate FROM '._DB_PREFIX_.'tax t, '._DB_PREFIX_.'carrier c, '._DB_PREFIX_.'orders o 
-            where o.id_order = '.(int)$id_order.' 
+            $query = 'SELECT rate FROM '._DB_PREFIX_.'tax t, '._DB_PREFIX_.'carrier c, '._DB_PREFIX_.'orders o
+            where o.id_order = '.(int)$id_order.'
             AND o.id_carrier = c.id_carrier
             AND c.id_tax = t.id_tax';
         } else {
             $id_country = Country::getDefaultCountryId();
             $this->logInFile('tax id country carrier : '.$id_country);
             $query = '
-            SELECT 
-                    tax.rate as rate 
-            FROM 
+            SELECT
+                    tax.rate as rate
+            FROM
             '._DB_PREFIX_.'tax tax, '._DB_PREFIX_.'carrier carrier, '._DB_PREFIX_.'orders orders, '._DB_PREFIX_.
-            'tax_rule taxrule 
-            WHERE orders.id_order = '.(int)$id_order.' 
+            'tax_rule taxrule
+            WHERE orders.id_order = '.(int)$id_order.'
                 AND orders.id_carrier = carrier.id_carrier
-                AND carrier.id_tax_rules_group = taxrule.id_tax_rules_group 
-                AND taxrule.id_country = '.(int)$id_country.' 
-                AND taxrule.id_state = 0 
-                AND taxrule.id_tax = tax.id_tax     
+                AND carrier.id_tax_rules_group = taxrule.id_tax_rules_group
+                AND taxrule.id_country = '.(int)$id_country.'
+                AND taxrule.id_state = 0
+                AND taxrule.id_tax = tax.id_tax
             ';
         }
 
@@ -2792,17 +2720,17 @@ class PrestashopToDolibarrPro extends Module
         $this->logInFile('--getProductRef--');
         if ($id_product_attribute) {
             $query = '
-            SELECT     date_export_doli, id_ext_doli, reference, ean13, upc, ref_doli 
-            FROM 
+            SELECT     date_export_doli, id_ext_doli, reference, ean13, upc, ref_doli
+            FROM
                     '._DB_PREFIX_.'product_attribute as pa
-            WHERE 
+            WHERE
                 pa.id_product_attribute = '.(int)$id_product_attribute;
         } else {
             $query = '
-            SELECT     date_export_doli, id_ext_doli, ref_doli 
-            FROM 
+            SELECT     date_export_doli, id_ext_doli, ref_doli
+            FROM
                     '._DB_PREFIX_.'product as p
-            WHERE 
+            WHERE
                 p.id_product = '.(int)$id_product;
         }
         $result = Db::getInstance()->executeS($query);
@@ -2815,19 +2743,19 @@ class PrestashopToDolibarrPro extends Module
         if (($id_product_attribute) && ($id_product_attribute != 0)) {
             $query = '
             UPDATE        '._DB_PREFIX_.'product_attribute
-            SET 
+            SET
                 date_export_doli = CURRENT_TIMESTAMP,
-                id_ext_doli = '.(int)$id_ext_doli.' 
-            WHERE 
+                id_ext_doli = '.(int)$id_ext_doli.'
+            WHERE
                 id_product_attribute = '.(int)$id_product_attribute;
         } else {
             $query = '
-            UPDATE 
+            UPDATE
                     '._DB_PREFIX_.'product
-            SET 
+            SET
                 date_export_doli = CURRENT_TIMESTAMP,
-                id_ext_doli = '.(int)$id_ext_doli.' 
-            WHERE 
+                id_ext_doli = '.(int)$id_ext_doli.'
+            WHERE
                 id_product = '.(int)$id_product;
         }
 
@@ -2836,13 +2764,30 @@ class PrestashopToDolibarrPro extends Module
         return $result[0];
     }
 
+	/* this is like the native method $customer_obj->getCustomers() but selecting also the dolibarr fields ;-) */
+	private function getCustomers($onlyActive = null){
+        $result = Db::getInstance()->executeS(
+            'SELECT `id_customer`, `email`, `firstname`, `lastname`, `date_export_doli`, `id_ext_doli`
+            FROM `' . _DB_PREFIX_ . 'customer`
+            WHERE 1 ' . Shop::addSqlRestriction(Shop::SHARE_CUSTOMER)
+            .($onlyActive ? ' AND `active` = 1' : '')
+        );
+        $customers = array();
+        if ($result && is_array($result)){
+			foreach($result as $arr){
+				$customers[$arr['id_customer']] = $arr;
+			}
+		}
+        return $customers;
+	}
+
     public function getCustomerRef($id_customer)
     {
         $query = '
-            SELECT     date_export_doli, id_ext_doli
-            FROM 
+            SELECT     date_add, date_upd ,date_export_doli, id_ext_doli
+            FROM
                     '._DB_PREFIX_.'customer as c
-            WHERE 
+            WHERE
                 c.id_customer = '.(int)$id_customer;
 
         $result = Db::getInstance()->executeS($query);
@@ -2850,28 +2795,28 @@ class PrestashopToDolibarrPro extends Module
         return $result[0];
     }
 
-    public function getOrderRef($id_order)
-    {
+	private function getCustomerLastOrder($customer_id){
         $query = '
-            SELECT     date_export_order_doli, id_ext_order_doli
-            FROM 
-                    '._DB_PREFIX_.'orders as o
-            WHERE 
-                o.id_order = '.(int)$id_order;
+            SELECT     *
+            FROM
+                    '._DB_PREFIX_.'orders
+            WHERE
+                id_customer = '.(int)$customer_id.
+			' ORDER BY `id_order` DESC LIMIT 0,1';
 
         $result = Db::getInstance()->executeS($query);
 
-        return $result[0];
-    }
+        return $result && isset($result[0]) ? $result[0] : null;
+	}
 
-    public function getInvoiceRef($id_order)
+    public function getOrderRef($id_order)
     {
         $query = '
-            SELECT     date_export_invoice_doli, id_ext_invoice_doli
-            FROM 
-                    '._DB_PREFIX_.'orders as o
-            WHERE 
-                o.id_order = '.(int)$id_order;
+            SELECT     date_export_order_doli, id_ext_order_doli, date_export_invoice_doli, id_ext_invoice_doli
+            FROM
+                    '._DB_PREFIX_.'orders
+            WHERE
+                id_order = '.(int)$id_order;
 
         $result = Db::getInstance()->executeS($query);
 
@@ -2882,10 +2827,10 @@ class PrestashopToDolibarrPro extends Module
     {
         $query = '
         UPDATE        '._DB_PREFIX_.'customer
-        SET 
+        SET
             date_export_doli = CURRENT_TIMESTAMP,
             id_ext_doli = '.(int)$id_ext_doli.'
-        WHERE 
+        WHERE
             id_customer = '.(int)$id_customer;
 
         $result = Db::getInstance()->execute($query);
@@ -2897,15 +2842,15 @@ class PrestashopToDolibarrPro extends Module
     {
         $query = '
         UPDATE        '._DB_PREFIX_.'orders
-        SET 
+        SET
             date_export_order_doli = CURRENT_TIMESTAMP,
-            id_ext_order_doli = '.(int)$id_ext_doli.' 
-        WHERE 
+            id_ext_order_doli = '.(int)$id_ext_doli.'
+        WHERE
             id_order = '.(int)$id_order;
 
         $result = Db::getInstance()->execute($query);
-        $this->logInFile('-requete set order : '.$query);
-        $this->logInFile('result requete : '.print_r($result, true));
+        $this->logInFile('- SQL query to set order doli_id : '.$query);
+        $this->logInFile('- result of SQL query : '.print_r($result, true));
 
         return $result[0];
     }
@@ -2914,15 +2859,15 @@ class PrestashopToDolibarrPro extends Module
     {
         $query = '
         UPDATE        '._DB_PREFIX_.'orders
-        SET 
+        SET
             date_export_invoice_doli = CURRENT_TIMESTAMP,
-            id_ext_invoice_doli = '.(int)$id_ext_doli.' 
-        WHERE 
+            id_ext_invoice_doli = '.(int)$id_ext_doli.'
+        WHERE
             id_order = '.(int)$id_order;
 
         $result = Db::getInstance()->execute($query);
-        $this->logInFile('-requete set invoice : '.$query);
-        $this->logInFile('result requete : '.print_r($result, true));
+        $this->logInFile('- SQL query to set invoice doli_id : '.$query);
+        $this->logInFile('- result of SQL query : '.print_r($result, true));
 
         return $result[0];
     }
@@ -2931,8 +2876,9 @@ class PrestashopToDolibarrPro extends Module
     {
         $query = '
         UPDATE        '._DB_PREFIX_.'customer
-        SET 
-            date_export_doli = NULL
+        SET
+            date_export_doli = NULL,
+            id_ext_doli = NULL
         ';
 
         $result = Db::getInstance()->execute($query);
@@ -2943,19 +2889,19 @@ class PrestashopToDolibarrPro extends Module
     {
         $query = '
         UPDATE        '._DB_PREFIX_.'product
-        SET 
+        SET
             date_export_doli = NULL,
             id_ext_doli = NULL
         ';
 
         $result = Db::getInstance()->execute($query);
-        $this->logInFile('-requete reset product : '.$query);
-        $this->logInFile('result requete : '.print_r($result, true));
+        $this->logInFile('- SQL query to reset products : '.$query);
+        $this->logInFile('- result of SQL query : '.print_r($result, true));
 
         if ($result) {
             $query = '
             UPDATE        '._DB_PREFIX_.'product_attribute
-            SET 
+            SET
                 date_export_doli = NULL,
                 id_ext_doli = NULL
             ';
@@ -2969,8 +2915,9 @@ class PrestashopToDolibarrPro extends Module
     {
         $query = '
         UPDATE        '._DB_PREFIX_.'orders
-        SET 
-            date_export_order_doli = NULL
+        SET
+            date_export_order_doli = NULL,
+            id_ext_order_doli = NULL
         ';
 
         $result = Db::getInstance()->execute($query);
@@ -2981,8 +2928,9 @@ class PrestashopToDolibarrPro extends Module
     {
         $query = '
         UPDATE        '._DB_PREFIX_.'orders
-        SET 
-            date_export_invoice_doli = NULL
+        SET
+            date_export_invoice_doli = NULL,
+            id_ext_invoice_doli = NULL
         ';
 
         $result = Db::getInstance()->execute($query);
@@ -2993,7 +2941,7 @@ class PrestashopToDolibarrPro extends Module
     {
         $query = '
         SELECT id_image FROM '._DB_PREFIX_.'image
-        WHERE  
+        WHERE
             id_product = '.(int)$id_product;
 
         $result = Db::getInstance()->executeS($query);
@@ -3013,8 +2961,9 @@ class PrestashopToDolibarrPro extends Module
     }
 
     /**nettoyage array categories*/
-    private function cleanCategory($cat_tab, $result = null)
+    private function cleanCategory($cat_tab, $result = array())
     {
+
         //if ($cat_tab['infos'])
         if (array_key_exists('infos', $cat_tab) == true) {
             $id_cat = $cat_tab['infos']['id_category'];
@@ -3038,14 +2987,14 @@ class PrestashopToDolibarrPro extends Module
     {
         if ($table == 'product') {
             $query = '
-            SELECT id_product, reference FROM '._DB_PREFIX_.'product 
+            SELECT id_product, reference FROM '._DB_PREFIX_.'product
                 WHERE reference <> reference_old_doli
                 ORDER BY id_product';
         } elseif ($table == 'product_attribute') {
             $query = '
-            SELECT pa.id_product, pa.id_product_attribute, pa.reference, p.ref_doli as product_reference 
-            FROM '._DB_PREFIX_.'product as p, '._DB_PREFIX_.'product_attribute as pa 
-                WHERE p.id_product = pa.id_product 
+            SELECT pa.id_product, pa.id_product_attribute, pa.reference, p.ref_doli as product_reference
+            FROM '._DB_PREFIX_.'product as p, '._DB_PREFIX_.'product_attribute as pa
+                WHERE p.id_product = pa.id_product
                   AND pa.reference <> pa.reference_old_doli
                 ORDER BY pa.id_product, pa.id_product_attribute';
         }
@@ -3055,22 +3004,22 @@ class PrestashopToDolibarrPro extends Module
         return $result;
     }
 
-    /**function qui retourne le nombre d'id inférieurs avec une ref identique*/
+    /** function which returns the number of lower ids with an identical ref */
     private function isRefUnique($id, $reference, $table)
     {
         if ($table == 'product') {
             $query = '
-            SELECT COUNT(*) as cpt FROM '._DB_PREFIX_."product 
-                WHERE reference = '".pSQL($reference)."' 
+            SELECT COUNT(*) as cpt FROM '._DB_PREFIX_."product
+                WHERE reference = '".pSQL($reference)."'
                  AND id_product < ".(int)$id;
         } elseif ($table == 'product_attribute') {
             $query = '
-            SELECT COUNT(*) as cpt FROM ( 
+            SELECT COUNT(*) as cpt FROM (
             SELECT p.id_product as id FROM '._DB_PREFIX_."product p
                 WHERE p.reference = '".pSQL($reference)."'
-            UNION 
+            UNION
             SELECT pa.id_product_attribute as id FROM "._DB_PREFIX_."product_attribute pa
-                WHERE pa.reference = '".pSQL($reference)."' 
+                WHERE pa.reference = '".pSQL($reference)."'
                  AND pa.id_product_attribute < ".(int)$id.'
             ) abc';
         }
@@ -3080,12 +3029,11 @@ class PrestashopToDolibarrPro extends Module
         return $result[0]['cpt'];
     }
 
-    /**function maj ref_doli*/
     private function insertRefDoli($id, $refdoli, $table = 'product')
     {
         $query = '
-        UPDATE '._DB_PREFIX_.pSQL($table)."  
-            SET ref_doli = '".pSQL($refdoli)."', 
+        UPDATE '._DB_PREFIX_.pSQL($table)."
+            SET ref_doli = '".pSQL($refdoli)."',
                 reference_old_doli = reference
             WHERE id_".pSQL($table).' = '.(int)$id;
         $this->logInFile('->sql : '.$query);
@@ -3094,8 +3042,7 @@ class PrestashopToDolibarrPro extends Module
         return $result;
     }
 
-    /** function get statutdolib */
-    private function getStatutDolibarr($statut)
+    private function getStatutDolibarr_old($statut)
     {
         $query = '
         SELECT id_order_state_doli FROM '._DB_PREFIX_.'order_state
@@ -3109,21 +3056,120 @@ class PrestashopToDolibarrPro extends Module
         return 0;
     }
 
-    /**
-    * Get all available order statuses
-    *
-    * @param integer $id_lang Language id for status name
-    * @return array Order statuses
-    */
-    public static function getOrderStates($id_lang)
+    private function getStatutDolibarr($state_id)
     {
-        $result = Db::getInstance()->executeS('
-        SELECT *
-        FROM `'._DB_PREFIX_.'order_state` os
-        LEFT JOIN `'._DB_PREFIX_.'order_state_lang` osl ON (os.`id_order_state` = osl.`id_order_state` 
-        AND osl.`id_lang` = '.(int)$id_lang.')
-        WHERE deleted = 0
-        ORDER BY `name` ASC');
-        return $result;
+        if (count($this->order_states)==0) $this->loadOrderStates();
+
+        $state_id = (int)$state_id;
+
+        if (!isset($this->order_states[$state_id])) return 0;
+        if (!isset($this->order_states[$state_id]['id_order_state_doli'])) return 0;
+
+        return  (int)$this->order_states[$state_id]['id_order_state_doli'];
+
     }
+
+    /*
+     * build an array of the prestashop order_states, indexed by the id_order_state, and with the names in the default language
+     * some of the order_states are defined by core and other defined by installed modules)
+     */
+	private function loadOrderStates(){
+
+        $order_states = Db::getInstance()->executeS('
+							SELECT *
+							FROM `'._DB_PREFIX_.'order_state` os
+							LEFT JOIN `'._DB_PREFIX_.'order_state_lang` osl ON (os.`id_order_state` = osl.`id_order_state`
+							AND osl.`id_lang` = '.$this->default_lang.')
+							WHERE deleted = 0
+							ORDER BY `name` ASC');
+
+		$this->order_states = array();
+		foreach ($order_states as $arr) $this->order_states[$arr['id_order_state']] = $arr;
+
+        return;
+	}
+
+	/*
+	 * get number of synced objects vs not synced objects, looking on database for dolibarr_id
+	 */
+	private function ajax_getHowMany(){
+		// check the requested table
+			if (empty($_GET['table']) || !in_array($_GET['table'],array('products','customers','orders','invoices'))){
+				return array('msg'=>'Error. Not valid table: '.$_GET['table']);
+			}
+			$table = $_GET['table'];
+
+		// get info from database
+			$f = array(
+						'products'  => array('product','id_product','id_ext_doli',''),
+						'customers' => array('customer','id_customer','id_ext_doli','active=1'),
+						'orders' => array('orders','id_order','id_ext_order_doli',''),
+						'invoices' => array('orders','id_order','id_ext_invoice_doli',''),
+					);
+
+			$all_objects = Db::getInstance()->executeS('
+								SELECT count('.$f[$table][1].') as n
+								FROM `'._DB_PREFIX_.$f[$table][0].'` '
+								.(!empty($f[$table][3]) ? 'WHERE '.$f[$table][3] : '')
+								.';');
+
+			$exported_objects = Db::getInstance()->executeS('
+								SELECT count('.$f[$table][1].') as n
+								FROM `'._DB_PREFIX_.$f[$table][0].'`
+								WHERE '.(!empty($f[$table][3]) ? $f[$table][3].' AND ':'')
+								.' '.$f[$table][2].' IS NOT NULL; ');
+
+			$msg = mb_strtoupper($table).":"
+					."\n\nNumber of TOTAL objects: ".$all_objects[0]['n']
+					."\n\nNumber of EXPORTED objects: ".$exported_objects[0]['n']
+					.( $exported_objects[0]['n'] != $all_objects[0]['n'] ? " !!!":"")
+					."\n\n";
+
+		return array('msg'=>$msg);
+	}
+
+}
+
+function _var_export($arr, $title='', $b_htmlspecialchars=1, $is_object = ''){
+        if ($title!='' && phpversion() > '5.3.0' && class_exists('Tracy\Debugger')){
+            eval("Tracy\Debugger::barDump(\$arr,\$title);");
+        }
+
+        $html = !empty($title) ? '<h3>'.$title.'</h3>' : '';
+	$html .= "\n<div style='margin-left:100px;font-size:10px;font-family:sans-serif;'>";
+
+        if (is_object($arr)){
+            $is_object = true;
+            $arr = get_object_vars($arr);
+        }else if ($is_object==''){
+            $is_object = false;
+        }
+
+	if (is_array($arr)){
+            if (count($arr)==0){
+                $html .= "&nbsp;";
+            }else{
+                $ii=0;
+                foreach ($arr as $k=>$ele){
+                    $html .= "\n\t<div style='float:left;'><b style='".($is_object ? 'background-color:rgba(0,0,0,0.1);padding:2px':'')."'>$k <span style='color:#822;'>&rarr;</span> </b></div>"
+                            ."\n\t<div style='border:1px #ddd solid;font-size:10px;font-family:sans-serif;'>";
+                    $html .= is_object($ele) ? _var_export(get_object_vars($ele),'',$b_htmlspecialchars,true) : _var_export($ele,'',$b_htmlspecialchars,false);
+                    $html .= "</div>";
+                    $html .= "\n\t<div style='float:none;clear:both;'></div>";
+                    $ii++;
+                }
+            }
+	}else if ($arr===NULL){
+            $html .= "&nbsp;";
+	}else if ($arr === 'b:0;' || substr($arr,0,2)=='a:'){
+            $uns = f_unserialize($arr);
+            if (is_array($uns))
+                $html .= htmlspecialchars($arr).'<br /><br />'._var_export($uns).'<br />';
+            else
+                $html .= $b_htmlspecialchars==1 ? htmlspecialchars($arr) : $arr;
+        }else{
+            $html .= $b_htmlspecialchars==1 ? htmlspecialchars($arr) : $arr;
+        }
+	$html .= "</div>";
+	return $html;
 }

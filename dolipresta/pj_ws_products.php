@@ -10,6 +10,7 @@
 * @author PJ CONSEIL
 * @version RC2
 */
+
 if (! defined("NOCSRFCHECK"))    define("NOCSRFCHECK",'1');
 
 set_include_path($_SERVER['DOCUMENT_ROOT'].'/htdocs');
@@ -35,19 +36,32 @@ require_once DOL_DOCUMENT_ROOT.'/user/class/user.class.php';
 require_once DOL_DOCUMENT_ROOT.'/product/class/product.class.php';
 require_once(DOL_DOCUMENT_ROOT."/categories/class/categorie.class.php");
 
-
 /**
 * Ecrit l'image du produit sur le disque
 */
 function ecrireImageProduit($product, $imagesB64, $imagesName, $productRef, $index=0) 
 {
 	global $conf;
-		
+	if (empty($imagesB64)) return 0;
+	
+	//file_put_contents(dirname(__FILE__).'/debug.log',"\n\n---ecrireImageProduit()--- ".time(),FILE_APPEND);
+
 	if ($product->id != "" && $imagesB64 != "" && $imagesName != "") {
 		/* 
 		creation du chemin
 		*/
-		$sdir = $conf->service->multidir_output[$conf->entity];
+		
+		if ($conf->product->dir_output && is_dir($conf->product->dir_output)){ /* [caos30] for Dolibarr 10.X (or maybe other before) */
+			
+			$sdir = rtrim($conf->product->dir_output ,'/');
+			
+
+		}else{ /* [caos30] for old Dolibarr versions compatibility */
+			
+			$sdir = $conf->service->multidir_output[$conf->entity];
+		}
+		
+		
 		if (!empty($conf->global->PRODUCT_USE_OLD_PATH_FOR_PHOTO))
 			$pdir = get_exdir($product->id,2,0,0,$product,'product').$product->id ."/photos/";
 		else
@@ -56,73 +70,38 @@ function ecrireImageProduit($product, $imagesB64, $imagesName, $productRef, $ind
 		$imgPath = $sdir."/".$pdir;
 		
 		if (!is_dir($imgPath)) mkdir($imgPath, 0777, true);
-
-		//on efface tout ce qu'il y a dans le répertoire en cas d'update
-		//@wdammak: Add cas Multi-images
-		if (is_dir($imgPath) && $index==0) {
+		
+		$imgPath .= '/';
+		
+		/*
+			if this is the first image of an array of images of the same product
+			then we empty the directory of images of this product
+		*/
+		if ($index==0){
 			if ($dh = opendir($imgPath)) {
 				while (($file = readdir($dh)) !== false) {
-					if($file != '.' && $file != '..'){
-						unlink($imgPath.$file); 
-					}
+					if (preg_match('/(jpeg|jpg|png)$/i',$file)) unlink($imgPath.$file);
 				}
 				closedir($dh);
 			}
 		}
+
 		
 		/*
-		ecriture du fichier
+			write the image file
 		*/
 		$fileContent = base64_decode($imagesB64);
 		$fichierAEcrire = $imgPath.$imagesName;
 		
-		if (!file_exists($fichierAEcrire)) {	
-			$inF = fopen($fichierAEcrire,'a+');
-			fputs($inF, $fileContent);
-			fclose($inF);
-		}
+		if (file_exists($fichierAEcrire)) unlink($fichierAEcrire);	
+		
+		$inF = fopen($fichierAEcrire,'a+');
+		fputs($inF, $fileContent);
+		fclose($inF);
 	}
 	return 0;
 }
 
-
-function ecrireImageProduitOld($product_id, $imagesB64, $imagesName, $productRef) 
-{
-	global $conf;
-	if ($product_id != "" && $imagesB64 != "" && $imagesName != "") {
-		/* 
-		creation du chemin
-		*/
-		$sdir = $conf->service->multidir_output[$conf->entity];
-		$pdir .= $productRef.'/';
-		$imgPath = $sdir."/".$pdir;
-		
-		//on efface tout ce qu'il y a dans le répertoire en cas d'update
-		if (is_dir($imgPath)) {
-			if ($dh = opendir($imgPath)) {
-				while (($file = readdir($dh)) !== false) {
-					if($file != '.' && $file != '..'){
-						unlink($imgPath.$file); 
-					}
-				}
-				closedir($dh);
-			}
-		}
-		else  mkdir($imgPath, 0777, true);
-		
-		/*
-		ecriture du fichier
-		*/
-		$fileContent = base64_decode($imagesB64);
-		$fichierAEcrire = $imgPath.$imagesName;
-		
-		if (!file_exists($fichierAEcrire)) {	
-			$inF = fopen($fichierAEcrire,'a+');
-			fputs($inF, $fileContent);
-			fclose($inF);
-		}	
-	}
-}
 
 dol_syslog("Call Dolibarr webservices interfaces");
 
@@ -640,14 +619,33 @@ function createProductOrService($authentication,$product)
 			$db->commit();
             $objectresp=array('result'=>array('result_code'=>'OK', 'result_label'=>''),'id'=>$newobject->id,'ref'=>$newobject->ref);
 			
+			
 			/*
 			* creation de l'image
 			*/
-			$product_id = $newobject->id;			
-			$imagesB64 = $product['images']['image']['photo'];
-			$imagesName = $product['images']['image']['photo_vignette'];
-			ecrireImageProduit($newobject, $imagesB64, $imagesName, $product['ref']);
-			//ecrireImageProduitOld($product_id, $imagesB64, $imagesName, $product['ref']);
+
+			$product_id = $newobject->id;
+			
+			/* [caos30] old versions */
+			if (isset($product['images']['image']['photo'])){ 
+				$imagesB64 = $product['images']['image']['photo'];
+				$imagesName = $product['images']['image']['photo_vignette'];
+				ecrireImageProduit($newobject, $product['images']['image']['photo'], $product['images']['image']['photo_vignette'], $product['ref']);
+				
+			/* [caos30] loop for save all the possible images */
+			}else{
+				$images = $product['images']['image'];
+				//file_put_contents(dirname(__FILE__).'/debug.log',"\n\n---images of product ".$product['ref']."--- ".time()."\n".var_export($images,true),FILE_APPEND);
+				if (is_array($images)){
+					foreach ($images as $ii=>$image){
+						if (!empty($image['photo'])){
+							ecrireImageProduit($newobject, $image['photo'], $image['photo_vignette'], $product['ref'],$ii);
+						}
+					}
+				}
+			}
+				
+			
         }
         else
         {
@@ -679,6 +677,35 @@ function createProductOrService($authentication,$product)
     return $objectresp;
 }
 
+/*
+ * [caos30] function to dump base64 image received from Webservice to a physical image file
+ */
+function _base64_to_jpeg($base64_string, $output_file, $overwrite=1) {
+	
+	// check if the file exists
+	if (file_exists($output_file)){
+		if ($overwrite==1) 
+			unlink($output_file);
+		else
+			return '';
+	}
+	
+    $ifp = fopen( $output_file, 'wb' ); 
+
+    // split the string on commas
+    // $data[ 0 ] == "data:image/png;base64"
+    // $data[ 1 ] == <actual base64 string>
+    $data = explode( ',', $base64_string );
+    
+    if (isset($data[1]))
+		fwrite( $ifp, base64_decode( $data[1] ) );
+	else
+		fwrite( $ifp, base64_decode( $data[0] ) );
+		
+    fclose( $ifp ); 
+
+    return $output_file; 
+}
 
 /**
  * Update a product or service
@@ -693,7 +720,7 @@ function updateProductOrService($authentication,$product)
 
     $now=dol_now();
 
-    dol_syslog("Function: updateProductOrService login=".$authentication['login']);
+    dol_syslog("Function: updateProductOrService login=".$authentication['login']."\n\n ---------- product=".print_r($product,true));
 
     if ($authentication['entity']) $conf->entity=$authentication['entity'];
 
@@ -725,7 +752,7 @@ function updateProductOrService($authentication,$product)
 
         $newobject=new Product($db);
         $newobject->fetch($product['id']);
-
+        
         if (isset($product['ref']))     $newobject->ref=$product['ref'];
         if (isset($product['ref_ext'])) $newobject->ref_ext=$product['ref_ext'];
         $newobject->type=$product['type'];
@@ -857,11 +884,11 @@ function updateProductOrService($authentication,$product)
 			//ToDo: multi Image
 			//by @wdammak
 			$product_id = $product['id'];
-			foreach($product['images']['image'] as $key => $curimage)
+			foreach($product['images']['image'] as $ii => $curimage)
 			{
 				$imagesB64 = $curimage['photo'];
 				$imagesName = $curimage['photo_vignette'];
-				ecrireImageProduit((object)$product, $imagesB64, $imagesName, $product['ref'],$key);
+				ecrireImageProduit((object)$product, $imagesB64, $imagesName, $product['ref'],$ii);
 			}
 			
             $objectresp=array('result'=>array('result_code'=>'OK', 'result_label'=>''),'id'=>$newobject->id,'ref'=>$newobject->ref);

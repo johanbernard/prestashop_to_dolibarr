@@ -9,14 +9,18 @@
 * @author PJ CONSEIL
 * @version RC2
 *}
-<ul id="menuTab">
+
+<ul id="menuTab" style="margin-top:1rem;">
 	<li id="menuTab1" class="menuTabButton selected">&nbsp;{l s='Info Service' mod='prestashoptodolibarrpro'}&nbsp;</li>
 	<li id="menuTab2" class="menuTabButton">&nbsp;{l s='Webservices Access Configuration' mod='prestashoptodolibarrpro'}&nbsp;</li>
 	<li id="menuTab3" class="menuTabButton">&nbsp;{l s='Export Settings' mod='prestashoptodolibarrpro'}&nbsp;</li>
 	<li id="menuTab4" class="menuTabButton">&nbsp;{l s='Export Prestashop data to Dolibarr' mod='prestashoptodolibarrpro'}&nbsp;</li>
 </ul>
 <div id="tabList">	
-	<div id="menuTab1Sheet" class="tabItem selected">
+	
+	<!-- ================ Info Service ================ -->
+	
+	<div id="menuTab1Sheet" class="tabItem selected"> 
 		<form action = "{if {$smarty.server.REQUEST_URI|escape:'htmlall':'UTF-8'}|strstr:"&id_tab"|escape:'htmlall':'UTF-8'}{{$smarty.server.REQUEST_URI|escape:'htmlall':'UTF-8'}|strstr:"&id_tab":true|escape:'htmlall':'UTF-8'}{else}{$smarty.server.REQUEST_URI|escape:'htmlall':'UTF-8'}{/if}&id_tab=1" method= "post">
 			<img src= "../modules/prestashoptodolibarrpro/views/img/dolibarr.jpg" style = "float:left; margin-right:15px;">
 			<b>{l s='This module synchronises Prestashop with dolibarr in real time.' mod='prestashoptodolibarrpro'}</b>
@@ -38,6 +42,9 @@
 			{l s='Thank you ! ' mod='prestashoptodolibarrpro'}
 		</form>
 	</div>
+	
+	<!-- ================ Webservices Access Configuration ================ -->
+	
 	<div id="menuTab2Sheet" class="tabItem">
 		<form action = "{if {$smarty.server.REQUEST_URI|escape:'htmlall':'UTF-8'}|strstr:"&id_tab"|escape:'htmlall':'UTF-8'}{{$smarty.server.REQUEST_URI|escape:'htmlall':'UTF-8'}|strstr:"&id_tab":true|escape:'htmlall':'UTF-8'}{else}{$smarty.server.REQUEST_URI|escape:'htmlall':'UTF-8'}{/if}&id_tab=2" method= "post">
 			<fieldset>
@@ -69,9 +76,15 @@
 			</fieldset>
 		</form>
 	</div>
+	
+	<!-- ================ Export settings ================ -->
+	
 	<div id="menuTab3Sheet" class="tabItem">
 		<form action = "{if {$smarty.server.REQUEST_URI|escape:'htmlall':'UTF-8'}|strstr:"&id_tab"|escape:'htmlall':'UTF-8'}{{$smarty.server.REQUEST_URI|escape:'htmlall':'UTF-8'}|strstr:"&id_tab":true|escape:'htmlall':'UTF-8'}{else}{$smarty.server.REQUEST_URI|escape:'htmlall':'UTF-8'}{/if}&id_tab=3" method= "post" id="formone">
-			{if {$varMain.ws_accesss_ok|escape:'htmlall':'UTF-8'} neq 'OK'} {l s='Please configure Webservices Access first' mod='prestashoptodolibarrpro'}
+			{if {$varMain.ws_accesss_ok|escape:'htmlall':'UTF-8'} neq 'OK'} 
+			
+				{l s='Please configure Webservices Access first' mod='prestashoptodolibarrpro'}
+				
 			{else}
 				<fieldset>
 					<legend><img src= "../img/admin/contact.gif" />{l s='Synchronizes in real time Prestashop with Dolibarr' mod='prestashoptodolibarrpro'}</legend>
@@ -144,43 +157,111 @@
 			{/if}
 		</form>
 	</div>
+	
+	<!-- ================ Export Prestashop data to Dolibarr ================ -->
+	
 	<div id="menuTab4Sheet" class="tabItem">
 		<form action = "{if {$smarty.server.REQUEST_URI|escape:'htmlall':'UTF-8'}|strstr:"&id_tab"|escape:'htmlall':'UTF-8'}{{$smarty.server.REQUEST_URI|escape:'htmlall':'UTF-8'}|strstr:"&id_tab":true|escape:'htmlall':'UTF-8'}{else}{$smarty.server.REQUEST_URI|escape:'htmlall':'UTF-8'}{/if}&id_tab=4" method= "post">
-			{if {$varMain.ws_accesss_ok|escape:'htmlall':'UTF-8'} neq 'OK'} {l s='Please configure Webservices Access first' mod='prestashoptodolibarrpro'}
+			{if {$varMain.ws_accesss_ok|escape:'htmlall':'UTF-8'} neq 'OK'} 
+			
+				{l s='Please configure Webservices Access first' mod='prestashoptodolibarrpro'}
+				
 			{else}
 				<fieldset>
 					<legend><img src= "../img/admin/contact.gif" />{l s='Export Prestashop data to Dolibarr (for first use or catching up)' mod='prestashoptodolibarrpro'}</legend>
 					<table border = "0" width= "800" cellpadding = "0" cellspacing = "0" id= "form">
-						<tr><td colspan = "2">{l s='Warning : This Steps may take several minutes!' mod='prestashoptodolibarrpro'}<br /><br /></td></tr>
-						<tr><td>{l s='Export customers' mod='prestashoptodolibarrpro'}</td><td><input class = "button" name = "btnSubmitExportClient" value = "{l s='Start' mod='prestashoptodolibarrpro'}" type = "submit"
-							onclick="this.style.backgroundImage='url(../modules/prestashoptodolibarrpro/views/img/loader.gif)'; 
-							this.style.backgroundRepeat='no-repeat'; this.style.backgroundPosition='center'; this.value=' . . . ';"/></td> 
-							<td>{l s='Reset customers' mod='prestashoptodolibarrpro'}</td><td><input class = "button" name = "btnResetExportClient" value = "{l s='Reset' mod='prestashoptodolibarrpro'}" type = "submit" /></td>
+						<tr>
+							<td colspan = "2">{l s='Warning : This Steps may take several minutes!' mod='prestashoptodolibarrpro'}<br /><br /></td>
 						</tr>
 						<tr>
-							<td>{l s='Export categories' mod='prestashoptodolibarrpro'}</td>
-							<td><input class = "button" name = "btnSubmitImportCategory" value = "{l s='Start' mod='prestashoptodolibarrpro'}" type = "submit" onclick="this.style.backgroundImage='url(../modules/prestashoptodolibarrpro/views/img/loader.gif)'; this.style.backgroundRepeat='no-repeat'; this.style.backgroundPosition='center'; this.value=' . . . ';"/></td>
+							<td>
+								<b>1.</b> {l s='Export categories' mod='prestashoptodolibarrpro'}
+							</td>
+							<td>&nbsp;</td>
+							<td>
+								<input class = "button" name = "btnSubmitImportCategory" value = "{l s='Start' mod='prestashoptodolibarrpro'}" type = "submit" 
+									onclick="this.style.backgroundImage='url(../modules/prestashoptodolibarrpro/views/img/loader.gif)'; this.style.backgroundRepeat='no-repeat'; this.style.backgroundPosition='center'; this.value=' . . . ';"/>
+							</td>
+							<td>&nbsp;</td>
+							<td>&nbsp;</td>
 						</tr>	
 						<tr>
-							<td>{l s='Export products' mod='prestashoptodolibarrpro'}<br>
-							<i>{l s='(stock are synchronised if you set a warehouse in the exportations settings)' mod='prestashoptodolibarrpro'}</i></td>
-							<td><input class = "button" name = "btnSubmitExportProduct" value = "{l s='Start' mod='prestashoptodolibarrpro'}" type = "submit" onclick="this.style.backgroundImage='url(../modules/prestashoptodolibarrpro/views/img/loader.gif)'; 
-							this.style.backgroundRepeat='no-repeat'; this.style.backgroundPosition='center'; this.value=' . . . ';"/>
+							<td>
+								<b>2.</b> {l s='Export products' mod='prestashoptodolibarrpro'} <a href='#' onclick='$("#export_products_tip").toggle();return false;' style='outline:none;'>(info)</a>
+								<div id='export_products_tip' style='display:none;'><br><i>{l s='(stock are synchronised if you set a warehouse in the exportations settings)' mod='prestashoptodolibarrpro'}</i></div>
+							</td>
+							<td>
+								<a href="#" class="button" id="btnHowMany_products" onclick="js_show_howmany('products');return false;" 
+									style="background-repeat:no-repeat;background-position:center;display:inline-block;min-width:10em;margin-right:1rem;">
+									{l s='How many' mod='prestashoptodolibarrpro'}</a>
+							</td>
+							<td>
+								<input class = "button" name = "btnSubmitExportProduct" value = "{l s='Start' mod='prestashoptodolibarrpro'}" type = "submit" 
+									onclick="this.style.backgroundImage='url(../modules/prestashoptodolibarrpro/views/img/loader.gif)'; this.style.backgroundRepeat='no-repeat'; this.style.backgroundPosition='center'; this.value=' . . . ';" />
 							</td>  
-							<td>{l s='Reset products' mod='prestashoptodolibarrpro'}</td><td><input class = "button" name = "btnResetExportProduct" value = "{l s='Reset' mod='prestashoptodolibarrpro'}" type = "submit" /></td>
+							<td>{l s='Reset products' mod='prestashoptodolibarrpro'}</td>
+							<td>
+								<input class = "button" name = "btnResetExportProduct" value = "{l s='Reset' mod='prestashoptodolibarrpro'}" type = "submit"
+									onclick="if(!confirm($('#javascript_message_1').html())) { return false; } " /></td>
+							</td>
 						</tr>
 						<tr>
-						<td>{l s='Export invoices' mod='prestashoptodolibarrpro'}</td><td><input class = "button" name = "btnSubmitImportInvoice" value = "{l s='Start' mod='prestashoptodolibarrpro'}" type = "submit" 
-							onclick="this.style.backgroundImage='url(../modules/prestashoptodolibarrpro/views/img/loader.gif)'; 
-							this.style.backgroundRepeat='no-repeat'; this.style.backgroundPosition='center'; this.value=' . . . ';"/>
+							<td>
+								<b>3.</b> {l s='Export customers' mod='prestashoptodolibarrpro'}
 							</td>
-							<td>{l s='Reset invoices' mod='prestashoptodolibarrpro'}</td><td><input class = "button" name = "btnResetExportInvoice" value = "{l s='Reset' mod='prestashoptodolibarrpro'}" type = "submit" /></td></tr>
-						<tr><td>{l s='Export orders' mod='prestashoptodolibarrpro'}</td><td><input class = "button" name = "btnSubmitImportOrder" value = "{l s='Start' mod='prestashoptodolibarrpro'}" type = "submit" 
-							onclick="this.style.backgroundImage='url(../modules/prestashoptodolibarrpro/views/img/loader.gif)'; 
-							this.style.backgroundRepeat='no-repeat'; this.style.backgroundPosition='center'; this.value=' . . . ';"
-						/></td>
-							<td>{l s='Reset orders' mod='prestashoptodolibarrpro'}</td><td><input class = "button" name = "btnResetExportOrder" value = "{l s='Reset' mod='prestashoptodolibarrpro'}" type = "submit" /></td></tr>
+							<td>
+								<a href="#" class="button" id="btnHowMany_customers" onclick="js_show_howmany('customers');return false;" 
+									style="background-repeat:no-repeat;background-position:center;display:inline-block;min-width:10em;margin-right:1rem;">
+									{l s='How many' mod='prestashoptodolibarrpro'}</a>
+							</td>
+							<td>
+								<input class = "button" name = "btnSubmitExportClient" value = "{l s='Start' mod='prestashoptodolibarrpro'}" type = "submit"
+									onclick="this.style.backgroundImage='url(../modules/prestashoptodolibarrpro/views/img/loader.gif)'; this.style.backgroundRepeat='no-repeat'; this.style.backgroundPosition='center'; this.value=' . . . ';" /></td> 
+							<td>{l s='Reset customers' mod='prestashoptodolibarrpro'}</td>
+							<td><input class = "button" name = "btnResetExportClient" value = "{l s='Reset' mod='prestashoptodolibarrpro'}" type = "submit" 
+									onclick="if(!confirm($('#javascript_message_1').html())) { return false; } " /></td>
+						</tr>
+						<tr>
+							<td>
+								<b>4.</b> {l s='Export orders' mod='prestashoptodolibarrpro'}
+							</td>
+							<td>
+								<a href="#" class="button" id="btnHowMany_orders" onclick="js_show_howmany('orders');return false;" 
+									style="background-repeat:no-repeat;background-position:center;display:inline-block;min-width:10em;margin-right:1rem;">
+									{l s='How many' mod='prestashoptodolibarrpro'}</a>
+							</td>
+							<td>
+								<input class = "button" name = "btnSubmitImportOrder" value = "{l s='Start' mod='prestashoptodolibarrpro'}" type = "submit" 
+									onclick="this.style.backgroundImage='url(../modules/prestashoptodolibarrpro/views/img/loader.gif)'; this.style.backgroundRepeat='no-repeat'; this.style.backgroundPosition='center'; this.value=' . . . ';" />
+							</td>
+							<td>{l s='Reset orders' mod='prestashoptodolibarrpro'}</td>
+							<td><input class = "button" name = "btnResetExportOrder" value = "{l s='Reset' mod='prestashoptodolibarrpro'}" type = "submit" 
+									onclick="if(!confirm($('#javascript_message_1').html())) { return false; } " /></td>
+						</tr>
+						<tr>
+							<td>
+								<b>5.</b> {l s='Export invoices' mod='prestashoptodolibarrpro'}
+							</td>
+							<td>
+								<a href="#" class="button" id="btnHowMany_invoices" onclick="js_show_howmany('invoices');return false;" 
+									style="background-repeat:no-repeat;background-position:center;display:inline-block;min-width:10em;margin-right:1rem;">
+									{l s='How many' mod='prestashoptodolibarrpro'}</a>
+							</td>
+							<td>
+								<input class = "button" name = "btnSubmitImportInvoice" value = "{l s='Start' mod='prestashoptodolibarrpro'}" type = "submit" 
+									onclick="this.style.backgroundImage='url(../modules/prestashoptodolibarrpro/views/img/loader.gif)'; this.style.backgroundRepeat='no-repeat'; this.style.backgroundPosition='center'; this.value=' . . . ';" />
+							</td>
+							<td>{l s='Reset invoices' mod='prestashoptodolibarrpro'}</td>
+							<td><input class = "button" name = "btnResetExportInvoice" value = "{l s='Reset' mod='prestashoptodolibarrpro'}" type = "submit" 
+									onclick="if(!confirm($('#javascript_message_1').html())) { return false; } " /></td>
+						</tr>
 					</table>
+					
+					<p style='margin-top:2rem;'>
+						<b><u>Note:</u></b> 
+						<span id='javascript_message_1'>{l s='If you proceed with a RESET operation Prestashop will forget any previous synchronization with Dolibarr regarding the kind of object reseted.' mod='prestashoptodolibarrpro'}</span>
+					</p>
+					
 			</fieldset>
 			{/if}
 		</form>
@@ -199,6 +280,7 @@
 {/literal}
 </style>
 <script type="text/javascript">
+	var ajax_token = '{$token}';
 {literal}
 	$(".menuTabButton").click(function () {
 		$(".menuTabButton.selected").removeClass("selected");
@@ -206,5 +288,31 @@
 		$(".tabItem.selected").removeClass("selected");
 		$("#" + this.id + "Sheet").addClass("selected");
 	});
+	
+	function js_show_howmany(element_type){
+		//$('#btnHowMany_'+element_type).style.backgroundImage='url(../modules/prestashoptodolibarrpro/views/img/loader.gif)';
+		var btn_text = $('#btnHowMany_'+element_type).html();
+		$('#btnHowMany_'+element_type).html('&nbsp;').css('backgroundImage','url(../modules/prestashoptodolibarrpro/views/img/loader.gif)');
+		
+		// index.php?controller=AdminModules&configure=prestashoptodolibarrpro&token=fb31b879ecb099fc6e0fcca078203ee3
+		$.ajax({
+			type: 'GET',
+			cache: false,
+			url: 'index.php?controller=AdminModules&configure=prestashoptodolibarrpro'
+				+ '&ajax=getHowMany'
+				+ '&token=' + ajax_token,
+			async: true,
+			dataType: 'json',
+			data: {
+				table: element_type,
+			},
+			success: function(res){
+				alert(res.msg);
+				$('#btnHowMany_'+element_type).css('backgroundImage','url()').html(btn_text);
+			}
+		});
+		
+	}
+
 {/literal}
 </script>

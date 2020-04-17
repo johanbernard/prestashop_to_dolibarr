@@ -11,6 +11,7 @@
 * @version RC2
 */
 if (! defined("NOCSRFCHECK"))    define("NOCSRFCHECK",'1');
+if (! defined("IS_A_WEBSERVICE_CALL_FROM_PRESTASHOP"))    define("IS_A_WEBSERVICE_CALL_FROM_PRESTASHOP",'1');
 
 set_include_path($_SERVER['DOCUMENT_ROOT'].'/htdocs');
 
@@ -590,6 +591,13 @@ function createInvoice($authentication,$invoice)
         {
             $db->commit();
             $objectresp=array('result'=>array('result_code'=>'OK', 'result_label'=>''),'id'=>$newobject->id,'ref'=>$newobject->ref);
+            
+            $invoice_id = $newobject->id;
+            $order_id = $invoice['id_ext_order_doli'];
+            $sql = "INSERT INTO ".MAIN_DB_PREFIX."element_element"
+					." (fk_source, sourcetype, fk_target, targettype)"
+					." VALUES (".$order_id.", 'commande', ".$invoice_id.", 'facture')";
+            $db->query($sql);
         }
         else
         {
