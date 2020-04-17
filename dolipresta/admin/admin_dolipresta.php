@@ -235,11 +235,9 @@ print $langs->trans("dolipresta@title")."
 				$obj = $db->fetch_object($resql);
 				if ($obj)
 				{
-					//count on dolipresta_prestashop_states
-					$nb_states = getNbStates($db);
-					if ($nb_states < 2) {
-						getPrestashopOrderStates($obj->url, $obj->wskey, $db, $langs);
-					}
+					//Get And Synch dolipresta_prestashop_states
+					getPrestashopOrderStates($obj->url, $obj->wskey, $db, $langs);
+
 					print "	<tr class='impair'>
 								<td><input type='text' class='flat' id='".$obj->rowid."url' name='".$obj->rowid."url'         value='".$obj->url."' size='40'></td>
 								<td><input type='text' class='flat' id='".$obj->rowid."wskey' name='".$obj->rowid."wskey'     value='".$obj->wskey."' size='40'></td>
@@ -358,11 +356,21 @@ function getPrestashopOrderStates($urlBoutique, $cleWS, $db, $langs) {
 		//$url = $urlBoutique.'/API/order_states?display=%5Bid%2C%20name%5D';
 		$url = $urlBoutique.'webservice/dispatcher.php?url=order_states&display=%5Bid%2C%20name%5D';
 		$xmlProd = $webService->get(array('url' => $url))->order_states->order_state;
-		
-		foreach ($xmlProd as $order_state) {
-			$query = 'INSERT INTO '.MAIN_DB_PREFIX.'dolipresta_prestashop_statut'.
-			' (id, libelle) VALUES ('.$order_state->id.", '".$order_state->name->language[0]."')";
-			$resql=$db->query($query);
+
+		$sql = "SELECT * FROM ".MAIN_DB_PREFIX."dolipresta_prestashop_statut WHERE id=";
+		foreach ($xmlProd as $order_state)
+		{
+			//Get if it doesn't exist
+			if(($resql = $db->query($sql.(int)$order_state->id)))
+			{
+				//Add new order state
+				if($resql->num_rows==0)
+				{
+					$query = 'INSERT INTO '.MAIN_DB_PREFIX.'dolipresta_prestashop_statut'.
+					' (id, libelle) VALUES ('.$order_state->id.", '".$order_state->name->language[0]."')";
+					$resql=$db->query($query);
+				}
+			}
 		}
 		$db->commit();
 		return 0;
@@ -376,28 +384,6 @@ function getPrestashopOrderStates($urlBoutique, $cleWS, $db, $langs) {
 		else
 			setEventMessage($langs->trans('Other error').' : '.'<br />'.$ex->getMessage());
 	}
-}
-
-function getNbStates($db) {
-	$query = "SELECT Count(*) as nb_states FROM ".MAIN_DB_PREFIX."dolipresta_prestashop_statut";
-	$resql = $db->query($query);
-	if ($resql) {
-		$num = $db->num_rows($resql);
-		$i = 0;
-		if ($num)
-		{
-			while ($i < $num)
-			{
-				$obj = $db->fetch_object($resql);
-				if ($obj)
-				{
-					return $obj->nb_states;
-				}
-				$i++;
-			}
-		}
-	}
-	return 0;
 }
 
 llxFooter();
