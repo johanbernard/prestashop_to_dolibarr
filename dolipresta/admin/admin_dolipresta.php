@@ -219,7 +219,8 @@ print $langs->trans("dolipresta@title")."
 					<td> </td>
 				</tr>";
 
-			
+	$statut_prestashop = array();
+
 	//récupération des données WS
 	$confWsDone = false;
 	$query = "SELECT * FROM ".MAIN_DB_PREFIX."dolipresta_wsurl";
@@ -235,11 +236,9 @@ print $langs->trans("dolipresta@title")."
 				$obj = $db->fetch_object($resql);
 				if ($obj)
 				{
-					//count on dolipresta_prestashop_states
-					$nb_states = getNbStates($db);
-					if ($nb_states < 2) {
-						getPrestashopOrderStates($obj->url, $obj->wskey, $db, $langs);
-					}
+					//Get And Synch dolipresta_prestashop_states
+					$statut_prestashop = getPrestashopOrderStates($obj->url, $obj->wskey, $db, $langs);
+
 					print "	<tr class='impair'>
 								<td><input type='text' class='flat' id='".$obj->rowid."url' name='".$obj->rowid."url'         value='".$obj->url."' size='40'></td>
 								<td><input type='text' class='flat' id='".$obj->rowid."wskey' name='".$obj->rowid."wskey'     value='".$obj->wskey."' size='40'></td>
@@ -277,30 +276,7 @@ print $langs->trans("dolipresta@title")."
 	/**
 	* affichage des statut
 	*/
-	if ($SYNCH_ORDER == 'on' && $confWsDone) {
-		//récup des statuts Prestashop
-		$query = 'SELECT  * FROM '.MAIN_DB_PREFIX.'dolipresta_prestashop_statut';
-		$resql = $db->query($query);
-		$statut_prestashop = array();
-		if ($resql)
-		{
-			$num = $db->num_rows($resql);
-			$i = 0;
-			if ($num)
-			{
-				//$db->begin();
-				while ($i < $num)
-				{
-					$obj = $db->fetch_object($resql);
-					if ($obj)
-					{
-						$statut_prestashop[$obj->id] = $obj->libelle;
-					}
-					$i++;
-				}
-			}
-		}
-		
+	if ($SYNCH_ORDER == 'on' && $confWsDone) {		
 		// parcours des statuts dolib
 		$query = 'SELECT  * FROM '.MAIN_DB_PREFIX.'dolipresta_dolibarr_statut';
 		$resql = $db->query($query);
@@ -355,17 +331,34 @@ print $langs->trans("dolipresta@title")."
 function getPrestashopOrderStates($urlBoutique, $cleWS, $db, $langs) {
 	try {
 		$webService = new PrestaShopWebservice($urlBoutique, $cleWS, false);
-		//$url = $urlBoutique.'/API/order_states?display=%5Bid%2C%20name%5D';
-		$url = $urlBoutique.'webservice/dispatcher.php?url=order_states&display=%5Bid%2C%20name%5D';
+		$url = $urlBoutique.'api/order_states?display=%5Bid%2C%20name%5D&sort=%5Bid_ASC%5D';
+
 		$xmlProd = $webService->get(array('url' => $url))->order_states->order_state;
-		
-		foreach ($xmlProd as $order_state) {
-			$query = 'INSERT INTO '.MAIN_DB_PREFIX.'dolipresta_prestashop_statut'.
-			' (id, libelle) VALUES ('.$order_state->id.", '".$order_state->name->language[0]."')";
-			$resql=$db->query($query);
+
+		$statut_prestashop = array();
+		$sql = "SELECT * FROM ".MAIN_DB_PREFIX."dolipresta_prestashop_statut WHERE id=";
+		foreach ($xmlProd as $order_state)
+		{
+			//Added if it doesn't exist
+			if(($resql_s = $db->query($sql.(int)$order_state->id)))
+			{
+				if($resql_s->num_rows==0)
+				{
+					$query = 'INSERT INTO '.MAIN_DB_PREFIX.'dolipresta_prestashop_statut'.
+					' (id, libelle) VALUES ('.$order_state->id.", '".$order_state->name->language[0]."')";
+					$resql = $db->query($query);
+					//Re-Check
+					$resql_s = $db->query($sql.(int)$order_state->id);
+				}
+			}
+			//Get State
+			if($obj=$resql_s->fetch_object())
+			{
+				$statut_prestashop[$obj->id] = $obj->libelle;
+			}
 		}
 		$db->commit();
-		return 0;
+		return $statut_prestashop;
 	} catch (PrestaShopWebserviceException $ex) {
 		$trace = $ex->getTrace(); 
 		$errorCode = $trace[0]['args'][0];
@@ -376,28 +369,7 @@ function getPrestashopOrderStates($urlBoutique, $cleWS, $db, $langs) {
 		else
 			setEventMessage($langs->trans('Other error').' : '.'<br />'.$ex->getMessage());
 	}
-}
-
-function getNbStates($db) {
-	$query = "SELECT Count(*) as nb_states FROM ".MAIN_DB_PREFIX."dolipresta_prestashop_statut";
-	$resql = $db->query($query);
-	if ($resql) {
-		$num = $db->num_rows($resql);
-		$i = 0;
-		if ($num)
-		{
-			while ($i < $num)
-			{
-				$obj = $db->fetch_object($resql);
-				if ($obj)
-				{
-					return $obj->nb_states;
-				}
-				$i++;
-			}
-		}
-	}
-	return 0;
+	return null;
 }
 
 llxFooter();
