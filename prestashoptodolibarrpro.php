@@ -2914,7 +2914,7 @@ class PrestashopToDolibarrPro extends Module
             id_product = '.(int)$id_product;
 
         $result = Db::getInstance()->executeS($query);
-        return $result[0]['id_image'];
+        return isset($result[0]['id_image'])?$result[0]['id_image']:0;
     }
 
     /**fonctions utiles*/
