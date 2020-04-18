@@ -302,7 +302,7 @@ $server->register(
     // Entry values
     array('authentication'=>'tns:authentication','product'=>'tns:product'),
     // Exit values
-    array('result'=>'tns:result','id'=>'xsd:string'),
+    array('result'=>'tns:result','id'=>'xsd:string','ref'=>'xsd:string'),
     $ns,
     $ns.'#createProductOrService',
     $styledoc,
@@ -316,7 +316,7 @@ $server->register(
     // Entry values
     array('authentication'=>'tns:authentication','product'=>'tns:product'),
     // Exit values
-    array('result'=>'tns:result','id'=>'xsd:string'),
+    array('result'=>'tns:result','id'=>'xsd:string','ref'=>'xsd:string'),
     $ns,
     $ns.'#updateProductOrService',
     $styledoc,
