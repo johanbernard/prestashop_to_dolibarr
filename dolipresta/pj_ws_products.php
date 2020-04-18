@@ -836,11 +836,14 @@ function updateProductOrService($authentication,$product)
 			//ToDo: multi Image
 			//by @wdammak
 			$product_id = $product['id'];
-			foreach($product['images']['image'] as $ii => $curimage)
+			if(is_array($product['images']['image']))
 			{
-				$imagesB64 = $curimage['photo'];
-				$imagesName = $curimage['photo_vignette'];
-				ecrireImageProduit((object)$product, $imagesB64, $imagesName, $newobject->ref,$ii);
+				foreach($product['images']['image'] as $ii => $curimage)
+				{
+					$imagesB64 = $curimage['photo'];
+					$imagesName = $curimage['photo_vignette'];
+					ecrireImageProduit((object)$product, $imagesB64, $imagesName, $newobject->ref,$ii);
+				}
 			}
 			
             $objectresp=array('result'=>array('result_code'=>'OK', 'result_label'=>''),'id'=>$newobject->id,'ref'=>$newobject->ref);
