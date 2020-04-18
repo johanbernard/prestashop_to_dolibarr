@@ -31,7 +31,6 @@ class PrestashopToDolibarrPro extends Module
     const UNINSTALL_SQL_FILE = 'uninstall.sql';
 
     private $html = '';
-    private $_html = '';
     private $post_errors = array();
 
     private $ws_adress_value = '';
@@ -635,7 +634,6 @@ class PrestashopToDolibarrPro extends Module
 
             $this->loadOrderStates();
 
-            //echo _var_export($_POST,'$_POST')._var_export($order_states,'$order_states');die();
             $this->logInFile('check synchro, prestashop order states: '.print_r($this->order_states, true));
 
             foreach ($this->order_states as $x => $order_state) {
@@ -2319,38 +2317,6 @@ class PrestashopToDolibarrPro extends Module
         return $result_create_order_tab;
     }
 
-    private function noSpecialCharacterV2($chaine)
-    {
-        $this->logInFile('--noSpecialCharacterV2--');
-        $chaine = utf8_decode($chaine);
-
-        //  special characters (in fact only letters and numbers)
-        $chaine = str_replace('<b>', '', $chaine);
-        $chaine = str_replace('</b>', '', $chaine);
-        $chaine = str_replace('<i>', '', $chaine);
-        $chaine = str_replace('</i>', '', $chaine);
-        $chaine = str_replace('<u>', '', $chaine);
-        $chaine = str_replace('</u>', '', $chaine);
-        $chaine = str_replace('<li>', '', $chaine);
-        $chaine = str_replace('</li>', '', $chaine);
-        $chaine = str_replace('<ul>', '', $chaine);
-        $chaine = str_replace('</ul>', '', $chaine);
-        $chaine = str_replace('<p>', '', $chaine);
-        $chaine = str_replace('</p>', '', $chaine);
-        $chaine = str_replace('<br />', '. ', $chaine);
-
-        //  accents
-        $chaine = trim($chaine);
-        $chaine_a = 'ÀÁÂÃÄÅàáâãäåÒÓÔÕÖØòóôõöøÈÉÊ';
-        $chaine_a .= 'ËèéêëÇçÌÍÎÏìíîïÙÚÛÜùúûüÿÑñ';
-        $chaine_b = 'aaaaaaaaaaaaooooooooooooeeeeeeeecciiiiiiiiuuuuuuuuynn';
-        $chaine = strtr($chaine, $chaine_a, $chaine_b);
-        //$chaine = preg_replace('/([^.a-z0-9]+)/i', ' ', $chaine);
-        //$chaine = strtolower($chaine);
-        $chaine = utf8_encode($chaine);
-        return $chaine;
-    }
-
     private function noSpecialCharacterV3($str_entree)
     {
         $this->logInFile('--noSpecialCharacterV3--');
@@ -3042,20 +3008,6 @@ class PrestashopToDolibarrPro extends Module
         return $result;
     }
 
-    private function getStatutDolibarr_old($statut)
-    {
-        $query = '
-        SELECT id_order_state_doli FROM '._DB_PREFIX_.'order_state
-            WHERE id_order_state = '.(int)$statut;
-        $this->logInFile('->sql : '.$query);
-        $result = Db::getInstance()->executeS($query);
-        $this->logInFile('->result getStatutDolibarr : '.print_r($result, true));
-        if (array_key_exists(0, $result)) {
-            return $result[0]['id_order_state_doli'];
-        }
-        return 0;
-    }
-
     private function getStatutDolibarr($state_id)
     {
         if (count($this->order_states)==0) $this->loadOrderStates();
@@ -3128,48 +3080,4 @@ class PrestashopToDolibarrPro extends Module
 		return array('msg'=>$msg);
 	}
 
-}
-
-function _var_export($arr, $title='', $b_htmlspecialchars=1, $is_object = ''){
-        if ($title!='' && phpversion() > '5.3.0' && class_exists('Tracy\Debugger')){
-            eval("Tracy\Debugger::barDump(\$arr,\$title);");
-        }
-
-        $html = !empty($title) ? '<h3>'.$title.'</h3>' : '';
-	$html .= "\n<div style='margin-left:100px;font-size:10px;font-family:sans-serif;'>";
-
-        if (is_object($arr)){
-            $is_object = true;
-            $arr = get_object_vars($arr);
-        }else if ($is_object==''){
-            $is_object = false;
-        }
-
-	if (is_array($arr)){
-            if (count($arr)==0){
-                $html .= "&nbsp;";
-            }else{
-                $ii=0;
-                foreach ($arr as $k=>$ele){
-                    $html .= "\n\t<div style='float:left;'><b style='".($is_object ? 'background-color:rgba(0,0,0,0.1);padding:2px':'')."'>$k <span style='color:#822;'>&rarr;</span> </b></div>"
-                            ."\n\t<div style='border:1px #ddd solid;font-size:10px;font-family:sans-serif;'>";
-                    $html .= is_object($ele) ? _var_export(get_object_vars($ele),'',$b_htmlspecialchars,true) : _var_export($ele,'',$b_htmlspecialchars,false);
-                    $html .= "</div>";
-                    $html .= "\n\t<div style='float:none;clear:both;'></div>";
-                    $ii++;
-                }
-            }
-	}else if ($arr===NULL){
-            $html .= "&nbsp;";
-	}else if ($arr === 'b:0;' || substr($arr,0,2)=='a:'){
-            $uns = f_unserialize($arr);
-            if (is_array($uns))
-                $html .= htmlspecialchars($arr).'<br /><br />'._var_export($uns).'<br />';
-            else
-                $html .= $b_htmlspecialchars==1 ? htmlspecialchars($arr) : $arr;
-        }else{
-            $html .= $b_htmlspecialchars==1 ? htmlspecialchars($arr) : $arr;
-        }
-	$html .= "</div>";
-	return $html;
 }
