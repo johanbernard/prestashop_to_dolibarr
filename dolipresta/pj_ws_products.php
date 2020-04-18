@@ -421,7 +421,7 @@ function getProductOrService($authentication,$id='',$ref='',$ref_ext='',$lang=''
             	$product->load_stock();
 
             	$dir = (!empty($conf->product->dir_output)?$conf->product->dir_output:$conf->service->dir_output);
-            	$pdir = get_exdir($product->id,2) . $product->id ."/photos/";
+            	$pdir = get_exdir($product->id,2,0,0,$product,'product') . $product->id ."/photos/";
             	$dir = $dir . '/'. $pdir;
 
             	if (! empty($product->multilangs[$langs->defaultlang]["label"]))     		$product->label =  $product->multilangs[$langs->defaultlang]["label"];
@@ -1100,7 +1100,7 @@ function getProductsForCategory($authentication,$id,$lang='')
 						if($obj->status > 0 )
 						{
 							$dir = (!empty($conf->product->dir_output)?$conf->product->dir_output:$conf->service->dir_output);
-							$pdir = get_exdir($obj->id,2) . $obj->id ."/photos/";
+							$pdir = get_exdir($obj->id,2,0,0,$obj,'product') . $obj->id ."/photos/";
 							$dir = $dir . '/'. $pdir;
 
 							$products[] = array(
