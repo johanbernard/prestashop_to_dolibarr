@@ -1220,7 +1220,8 @@ class PrestashopToDolibarrPro extends Module
                     $this->setProductRef(
                         $product['id_product'],
                         $product_attribute_id['id_product_attribute'],
-                        $wsretour['id']
+                        $wsretour['id'],
+                        $wsretour['ref']
                     );
                     $nb_product_imported++;
                     $product_ref_interne['id_ext_doli'] = $wsretour['id'];
@@ -2703,25 +2704,27 @@ class PrestashopToDolibarrPro extends Module
         return $result[0];
     }
 
-    public function setProductRef($id_product, $id_product_attribute = null, $id_ext_doli = 0)
+    public function setProductRef($id_product, $id_product_attribute = null, $id_ext_doli = 0, $ref_doli = '')
     {
         $this->logInFile('--setProductRef--');
         if (($id_product_attribute) && ($id_product_attribute != 0)) {
             $query = '
             UPDATE        '._DB_PREFIX_.'product_attribute
-            SET
+            SET 
                 date_export_doli = CURRENT_TIMESTAMP,
-                id_ext_doli = '.(int)$id_ext_doli.'
-            WHERE
+                id_ext_doli = '.(int)$id_ext_doli.',
+                ref_doli = \''.$ref_doli.'\' 
+            WHERE 
                 id_product_attribute = '.(int)$id_product_attribute;
         } else {
             $query = '
-            UPDATE
+            UPDATE 
                     '._DB_PREFIX_.'product
-            SET
+            SET 
                 date_export_doli = CURRENT_TIMESTAMP,
-                id_ext_doli = '.(int)$id_ext_doli.'
-            WHERE
+                id_ext_doli = '.(int)$id_ext_doli.',
+                ref_doli = \''.$ref_doli.'\'  
+            WHERE 
                 id_product = '.(int)$id_product;
         }
 
