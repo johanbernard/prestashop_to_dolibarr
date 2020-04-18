@@ -554,23 +554,6 @@ function createProductOrService($authentication,$product)
         $newobject->customcode=$product['customcode'];
 
         $newobject->canvas=$product['canvas'];
-				
-		
-        /*foreach($product['lines'] as $line)
-        {
-            $newline=new FactureLigne($db);
-            $newline->type=$line['type'];
-            $newline->desc=$line['desc'];
-            $newline->fk_product=$line['fk_product'];
-            $newline->total_ht=$line['total_net'];
-            $newline->total_vat=$line['total_vat'];
-            $newline->total_ttc=$line['total'];
-            $newline->vat=$line['vat_rate'];
-            $newline->qty=$line['qty'];
-            $newline->fk_product=$line['product_id'];
-        }*/
-        //var_dump($product['ref_ext']);
-        //var_dump($product['lines'][0]['type']);
 
         $db->begin();
 
@@ -630,16 +613,15 @@ function createProductOrService($authentication,$product)
 			if (isset($product['images']['image']['photo'])){ 
 				$imagesB64 = $product['images']['image']['photo'];
 				$imagesName = $product['images']['image']['photo_vignette'];
-				ecrireImageProduit($newobject, $product['images']['image']['photo'], $product['images']['image']['photo_vignette'], $product['ref']);
+				ecrireImageProduit($newobject, $product['images']['image']['photo'], $product['images']['image']['photo_vignette'], $newobject->ref);
 				
 			/* [caos30] loop for save all the possible images */
 			}else{
 				$images = $product['images']['image'];
-				//file_put_contents(dirname(__FILE__).'/debug.log',"\n\n---images of product ".$product['ref']."--- ".time()."\n".var_export($images,true),FILE_APPEND);
 				if (is_array($images)){
 					foreach ($images as $ii=>$image){
 						if (!empty($image['photo'])){
-							ecrireImageProduit($newobject, $image['photo'], $image['photo_vignette'], $product['ref'],$ii);
+							ecrireImageProduit($newobject, $image['photo'], $image['photo_vignette'], $newobject->ref,$ii);
 						}
 					}
 				}
@@ -675,36 +657,6 @@ function createProductOrService($authentication,$product)
     }
 
     return $objectresp;
-}
-
-/*
- * [caos30] function to dump base64 image received from Webservice to a physical image file
- */
-function _base64_to_jpeg($base64_string, $output_file, $overwrite=1) {
-	
-	// check if the file exists
-	if (file_exists($output_file)){
-		if ($overwrite==1) 
-			unlink($output_file);
-		else
-			return '';
-	}
-	
-    $ifp = fopen( $output_file, 'wb' ); 
-
-    // split the string on commas
-    // $data[ 0 ] == "data:image/png;base64"
-    // $data[ 1 ] == <actual base64 string>
-    $data = explode( ',', $base64_string );
-    
-    if (isset($data[1]))
-		fwrite( $ifp, base64_decode( $data[1] ) );
-	else
-		fwrite( $ifp, base64_decode( $data[0] ) );
-		
-    fclose( $ifp ); 
-
-    return $output_file; 
 }
 
 /**
@@ -888,7 +840,7 @@ function updateProductOrService($authentication,$product)
 			{
 				$imagesB64 = $curimage['photo'];
 				$imagesName = $curimage['photo_vignette'];
-				ecrireImageProduit((object)$product, $imagesB64, $imagesName, $product['ref'],$ii);
+				ecrireImageProduit((object)$product, $imagesB64, $imagesName, $newobject->ref,$ii);
 			}
 			
             $objectresp=array('result'=>array('result_code'=>'OK', 'result_label'=>''),'id'=>$newobject->id,'ref'=>$newobject->ref);
