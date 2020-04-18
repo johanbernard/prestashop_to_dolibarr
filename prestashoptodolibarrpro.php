@@ -1009,6 +1009,7 @@ class PrestashopToDolibarrPro extends Module
                     $refdoli = $this->ws_trigram_value.$this->dolibarr_ref_ind;
                     $this->dolibarr_ref_ind++;
                     Configuration::updateValue('DOLIBARR_REF_IND', $this->dolibarr_ref_ind);
+                    $this->updateRefEmpty($product['id_product'], $refdoli, 'product');
                 } else { // reference completed
                     // Is it unique?
                     $is_unique_id = $this->isRefUnique($product['id_product'], $product['reference'], 'product');
@@ -1113,8 +1114,10 @@ class PrestashopToDolibarrPro extends Module
 
             // Loop on variations
             foreach ($product_attributes_ids as $product_attribute_id) {
-                $product_ref = $this->ws_trigram_value.$this->format($product['id_product'], 10).
-                $this->format($product_attribute_id['id_product_attribute'], 10);
+                $product_ref = $this->ws_trigram_value.$this->format($product['id_product'], 10);
+                if($product_attribute_id['id_product_attribute']>0) {
+                	$this->format($product_attribute_id['id_product_attribute'], 10);
+                }
                 //$product_presta_ref = $product['reference'];
 
                 // Internal references recuperation
@@ -2914,7 +2917,7 @@ class PrestashopToDolibarrPro extends Module
             id_product = '.(int)$id_product;
 
         $result = Db::getInstance()->executeS($query);
-        return $result[0]['id_image'];
+        return isset($result[0]['id_image'])?$result[0]['id_image']:0;
     }
 
     /**fonctions utiles*/
@@ -3009,6 +3012,18 @@ class PrestashopToDolibarrPro extends Module
         $result = Db::getInstance()->execute($query);
         $this->logInFile('->result : '.print_r($result, true));
         return $result;
+    }
+
+    private function updateRefEmpty($id, $refdoli, $table = 'product')
+    {
+     	$query = '
+     		UPDATE '._DB_PREFIX_.pSQL($table)."  
+       		SET reference = '".pSQL($refdoli)."' 
+         	WHERE id_".pSQL($table).' = '.(int)$id;
+       	$this->logInFile('->sql : '.$query);
+       	$result = Db::getInstance()->execute($query);
+       	$this->logInFile('->result : '.print_r($result, true));
+      	return $result;
     }
 
     private function getStatutDolibarr($state_id)
