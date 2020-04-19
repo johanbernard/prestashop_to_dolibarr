@@ -48,6 +48,12 @@ class PrestashopToDolibarrPro extends Module
     public $is_checked_synch_order = '';
     public $is_checked_synch_category = '';
     public $is_checked_synch_status = '';
+    //mask
+    private $ws_mask_customer_value = '';
+    private $ws_mask_product_value = '';
+    private $ws_mask_invoice_value = '';
+    private $ws_mask_order_value = '';
+
     private $ws_warehouse_value = '';
     private $dolibarr_ref_ind = 0;
     private $dolibarr_version = 0;
@@ -95,6 +101,10 @@ class PrestashopToDolibarrPro extends Module
                 'DOLIBARR_IS_SYNCH_ORDER',
                 'DOLIBARR_IS_SYNCH_CATEGORY',
                 'DOLIBARR_IS_SYNCH_STATUS',
+                'DOLIBARR_WS_MASK_CUSTOMER',
+                'DOLIBARR_WS_MASK_PRODUCT',
+                'DOLIBARR_WS_MASK_INVOICE',
+                'DOLIBARR_WS_MASK_ORDER',		    
                 'DOLIBARR_REF_IND',
                 'DOLIBARR_VERSION',
                 'PS_LANG_DEFAULT',
@@ -143,6 +153,20 @@ class PrestashopToDolibarrPro extends Module
         if ($config['DOLIBARR_IS_SYNCH_STATUS']) {
             $this->is_checked_synch_status = $config['DOLIBARR_IS_SYNCH_STATUS'];
         }
+	//MASK
+        if ($config['DOLIBARR_WS_MASK_CUSTOMER']) {
+            $this->ws_mask_customer_value = $config['DOLIBARR_WS_MASK_CUSTOMER'];
+	}
+        if ($config['DOLIBARR_WS_MASK_PRODUCT']) {
+            $this->ws_mask_product_value = $config['DOLIBARR_WS_MASK_PRODUCT'];
+	}
+        if ($config['DOLIBARR_WS_MASK_INVOICE']) {
+            $this->ws_mask_invoice_value = $config['DOLIBARR_WS_MASK_INVOICE'];
+	}
+        if ($config['DOLIBARR_WS_MASK_ORDER']) {
+            $this->ws_mask_order_value = $config['DOLIBARR_WS_MASK_ORDER'];
+	}
+	    
         if ($config['DOLIBARR_REF_IND']) {
             $this->dolibarr_ref_ind = $config['DOLIBARR_REF_IND'];
         }
@@ -214,6 +238,12 @@ class PrestashopToDolibarrPro extends Module
         Configuration::deleteByName('DOLIBARR_IS_SYNCH_ORDER');
         Configuration::deleteByName('DOLIBARR_IS_SYNCH_CATEGORY');
         Configuration::deleteByName('DOLIBARR_IS_SYNCH_STATUS');
+	//MASK
+        Configuration::deleteByName('DOLIBARR_WS_MASK_CUSTOMER');
+        Configuration::deleteByName('DOLIBARR_WS_MASK_PRODUCT');
+        Configuration::deleteByName('DOLIBARR_WS_MASK_INVOICE');
+        Configuration::deleteByName('DOLIBARR_WS_MASK_ORDER');
+
         Configuration::deleteByName('DOLIBARR_REF_IND');
         Configuration::deleteByName('DOLIBARR_VERSION');
 
@@ -315,6 +345,10 @@ class PrestashopToDolibarrPro extends Module
 					'is_checked_synch_order' => $this->is_checked_synch_order,
 					'is_checked_synch_category' => $this->is_checked_synch_category,
 					'is_checked_synch_status' => $this->is_checked_synch_status,
+					'ws_mask_customer_value' => $this->ws_mask_customer_value,
+					'ws_mask_product_value' => $this->ws_mask_product_value,
+					'ws_mask_invoice_value' => $this->ws_mask_invoice_value,
+					'ws_mask_order_value' => $this->ws_mask_order_value,
 					'ws_accesss_ok' => $this->ws_accesss_ok,
 					'order_states' => $this->order_states,
 					'order_states_options' => $order_states_options
@@ -631,6 +665,11 @@ class PrestashopToDolibarrPro extends Module
             $check_synch_order = Tools::getValue('checkSynchOrder');
             $check_synch_category = Tools::getValue('checkSynchCategory');
             $check_synch_status = Tools::getValue('checkSynchStatus');
+            //MASK
+            $mask_customer_value = Tools::getValue('mask_customer');
+            $mask_product_value = Tools::getValue('mask_product');
+            $mask_invoice_value = Tools::getValue('mask_invoice');
+            $mask_order_value = Tools::getValue('mask_order');
 
             $this->loadOrderStates();
 
@@ -655,6 +694,11 @@ class PrestashopToDolibarrPro extends Module
             Configuration::updateValue('DOLIBARR_IS_SYNCH_ORDER', $check_synch_order);
             Configuration::updateValue('DOLIBARR_IS_SYNCH_CATEGORY', $check_synch_category);
             Configuration::updateValue('DOLIBARR_IS_SYNCH_STATUS', $check_synch_status);
+		
+            Configuration::updateValue('DOLIBARR_WS_MASK_CUSTOMER', $mask_customer_value);
+            Configuration::updateValue('DOLIBARR_WS_MASK_PRODUCT', $mask_product_value);
+            Configuration::updateValue('DOLIBARR_WS_MASK_INVOICE', $mask_invoice_value);
+            Configuration::updateValue('DOLIBARR_WS_MASK_ORDER', $mask_order_value);
 
             $this->is_checked_synch_customer = $check_synch_customer;
             $this->is_checked_synch_product = $check_synch_products;
@@ -663,6 +707,11 @@ class PrestashopToDolibarrPro extends Module
             $this->is_checked_synch_order = $check_synch_order;
             $this->is_checked_synch_category = $check_synch_category;
             $this->is_checked_synch_status = $check_synch_status;
+
+            $this->ws_mask_customer_value = $mask_customer_value;
+            $this->ws_mask_product_value = $mask_product_value;
+            $this->ws_mask_invoice_value = $mask_invoice_value;
+            $this->ws_mask_order_value = $mask_order_value;
 
             if ($this->is_checked_synch_customer || $this->is_checked_synch_product || $this->is_checked_synch_invoice
 				|| $this->is_checked_synch_order || $this->is_checked_synch_category || $this->is_checked_synch_status) {
@@ -834,7 +883,15 @@ class PrestashopToDolibarrPro extends Module
 			$is_client = $last_order ? 1 : 2;
 
 			// try to get the customer by ref
-			$ref = $this->ws_trigram_value.$this->format($c_id, 10);
+			if(isset($this->ws_mask_customer_value) && $this->ws_mask_customer_value != '' )
+			{
+				//$this->ws_mask_customer_value = 'CU{0000000000}';
+				$ref = $this->ws_trigram_value.$this->maskRef($this->ws_mask_customer_value, $c_id);
+			}
+			else
+			{
+				$ref = $this->ws_trigram_value.$this->format($c_id, 10);
+			}
             if (empty($id_ext_doli)){
 				$wsretour = $this->WSGetCustomer($ref);
 				if (!empty($wsretour['thirdparty']['id'])){
@@ -3096,6 +3153,116 @@ class PrestashopToDolibarrPro extends Module
 					."\n\n";
 
 		return array('msg'=>$msg);
+	}
+	
+	/**
+	 * Return value for a mask
+	 *
+	 * @param   string		$mask			Mask to use
+	 * @param   int			$value			Value to use
+	 * @param   string		$mode			'next' for next value or 'value' for value in param
+	 * @return 	string						New value (numeric) or error message
+	 */
+	private function maskRef($mask, $value, $mode = 'value')
+	{
+		if ($date == '') $date = time(); // We use local year and month of PHP server
+
+		$hasglobalcounter = false;
+		// Extract value for mask counter, mask raz and mask offset
+		if (preg_match('/\{(0+)([@\+][0-9\-\+\=]+)?([@\+][0-9\-\+\=]+)?\}/i', $mask, $reg))
+		{
+			$masktri = $reg[1].(!empty($reg[2]) ? $reg[2] : '').(!empty($reg[3]) ? $reg[3] : '');
+			$maskcounter = $reg[1];
+			$hasglobalcounter = true;
+		}
+		else
+		{
+			// setting some defaults so the rest of the code won't fail if there is a third party counter
+			$masktri = '000000';
+			$maskcounter = '000000';
+		}
+
+		$maskraz = -1;
+		$maskoffset = 0;
+		$resetEveryMonth = false;
+		
+		// If an offset is asked
+		if (!empty($reg[2]) && preg_match('/^\+/', $reg[2])) $maskoffset = preg_replace('/^\+/', '', $reg[2]);
+		if (!empty($reg[3]) && preg_match('/^\+/', $reg[3])) $maskoffset = preg_replace('/^\+/', '', $reg[3]);
+
+		$yearoffset = 0; // Use year of current $date by default
+		$yearoffsettype = false; // false: no reset, 0,-,=,+: reset at offset SOCIETE_FISCAL_MONTH_START, x=reset at offset x
+
+		// If a restore to zero after a month is asked we check if there is already a value for this year.
+		if (!empty($reg[2]) && preg_match('/^@/', $reg[2]))	$yearoffsettype = preg_replace('/^@/', '', $reg[2]);
+		if (!empty($reg[3]) && preg_match('/^@/', $reg[3]))	$yearoffsettype = preg_replace('/^@/', '', $reg[3]);
+		
+		// Get counter
+		if ($mode == 'next')
+		{
+			$counter = $value;
+			$counter++;
+		}
+		else
+		{
+			$counter = $value;
+		}
+
+		// Check if we must force counter to maskoffset
+		if (empty($counter)) $counter = $maskoffset;
+		elseif (preg_match('/[^0-9]/i', $counter))
+		{
+			$counter = 0;
+			//dol_syslog("Error, the last counter found is '".$counter."' so is not a numeric value. We will restart to 1.", LOG_ERR);
+		}
+		elseif ($counter < $maskoffset) $counter = $maskoffset;
+
+		// If value for $counter has a length higher than $maskcounter chars
+		if ($counter >= pow(10, $this->mask_strlen($maskcounter)))
+		{
+			$counter = 'ErrorMaxNumberReachForThisMask';
+		}
+
+		// Build numFinal
+		$numFinal = $mask;
+
+		// We replace special codes except refclient
+		if (!empty($yearoffsettype) && !is_numeric($yearoffsettype) && $yearoffsettype != '=')	// yearoffsettype is - or +, so we don't want current year
+		{
+			$numFinal = preg_replace('/\{yyyy\}/i', date("Y", $date) + $yearoffset, $numFinal);
+			$numFinal = preg_replace('/\{yy\}/i', date("y", $date) + $yearoffset, $numFinal);
+			$numFinal = preg_replace('/\{y\}/i', substr(date("y", $date), 1, 1) + $yearoffset, $numFinal);
+		}
+		else	// we want yyyy to be current year
+		{
+			$numFinal = preg_replace('/\{yyyy\}/i', date("Y", $date), $numFinal);
+			$numFinal = preg_replace('/\{yy\}/i', date("y", $date), $numFinal);
+			$numFinal = preg_replace('/\{y\}/i', substr(date("y", $date), 1, 1), $numFinal);
+		}
+		$numFinal = preg_replace('/\{mm\}/i', date("m", $date), $numFinal);
+		$numFinal = preg_replace('/\{dd\}/i', date("d", $date), $numFinal);
+
+		// Now we replace the counter
+		$maskbefore = '{'.$masktri.'}';
+		$maskafter = str_pad($counter, $this->mask_strlen($maskcounter), "0", STR_PAD_LEFT);
+		//print 'x'.$maskbefore.'-'.$maskafter.'y';
+		$numFinal = str_replace($maskbefore, $maskafter, $numFinal);
+		
+		die($numFinal);
+		return $numFinal;
+	}
+
+	/**
+	 * Make a strlen call. Works even if mbstring module not enabled
+	 *
+	 * @param   string		$string				String to calculate length
+	 * @param   string		$stringencoding		Encoding of string
+	 * @return  int								Length of string
+	 */
+	private function mask_strlen($string, $stringencoding = 'UTF-8')
+	{
+		if (function_exists('mb_strlen')) return mb_strlen($string, $stringencoding);
+		else return strlen($string);
 	}
 
 }
