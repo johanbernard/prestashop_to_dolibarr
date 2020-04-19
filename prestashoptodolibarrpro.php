@@ -972,12 +972,13 @@ class PrestashopToDolibarrPro extends Module
     {
         $enrich = array(
 					'id' => $id,
-					'ref' => trim($this->noSpecialCharacterV3($nom.' '.$prenom)),
+					'ref' => $this->noSpecialCharacterV3($client_ref),
 					'ref_ext' => $this->noSpecialCharacterV3($client_ref),
+					'name' => trim($this->noSpecialCharacterV3($nom.' '.$prenom)),
 					'status' => '1', //0 = clos // 1 = actif
 					'client' => $is_client,
 					'supplier' => '0',
-					'customer_code' => '-1',
+					'customer_code' => $this->noSpecialCharacterV3($client_ref),
 					'supplier_code' => '',
 					'customer_code_accountancy' => '',
 					'supplier_code_accountancy' => '',
