@@ -91,7 +91,8 @@ $server->wsdl->addComplexType(
 
 $thirdparty_fields= array(
     	'id' => array('name'=>'id','type'=>'xsd:string'),
-        'ref' => array('name'=>'name','type'=>'xsd:string'),
+        'ref' => array('name'=>'ref','type'=>'xsd:string'),
+        'name' => array('name'=>'name','type'=>'xsd:string'),
         'ref_ext' => array('name'=>'ref_ext','type'=>'xsd:string'),
         'fk_user_author' => array('name'=>'fk_user_author','type'=>'xsd:string'),
 		'status' => array('name'=>'status','type'=>'xsd:string'),
@@ -322,7 +323,8 @@ function getThirdParty($authentication,$id='',$ref='',$ref_ext='')
 
 				$thirdparty_result_fields=array(
 				    	'id' => $thirdparty->id,
-			   			'ref' => $thirdparty->name,
+			   			'ref' => $thirdparty->ref,
+			   			'name' => $thirdparty->name,
 			   			'ref_ext' => $thirdparty->ref_ext,
 			   			'status' => $thirdparty->status,
 			            'client' => $thirdparty->client,
@@ -433,7 +435,7 @@ function createThirdParty($authentication,$thirdparty)
 
         $newobject=new Societe($db);
         $newobject->ref=$thirdparty['ref'];
-        $newobject->name=$thirdparty['ref'];
+        $newobject->name=$thirdparty['name'];
         $newobject->ref_ext=$thirdparty['ref_ext'];
         $newobject->status=$thirdparty['status'];
         $newobject->client=$thirdparty['client'];
@@ -565,7 +567,7 @@ function updateThirdParty($authentication,$thirdparty)
 			$objectfound=true;
 
 			$object->ref=$thirdparty['ref'];
-			$object->name=$thirdparty['ref'];
+			$object->name=$thirdparty['name'];
 			$object->ref_ext=$thirdparty['ref_ext'];
 			$object->status=$thirdparty['status'];
 			$object->client=$thirdparty['client'];
