@@ -3165,7 +3165,7 @@ class PrestashopToDolibarrPro extends Module
 	 */
 	private function maskRef($mask, $value, $mode = 'value')
 	{
-		if ($date == '') $date = time(); // We use local year and month of PHP server
+		$date = time(); // We use local year and month of PHP server
 
 		$hasglobalcounter = false;
 		// Extract value for mask counter, mask raz and mask offset
