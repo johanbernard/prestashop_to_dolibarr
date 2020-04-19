@@ -3247,8 +3247,7 @@ class PrestashopToDolibarrPro extends Module
 		$maskafter = str_pad($counter, $this->mask_strlen($maskcounter), "0", STR_PAD_LEFT);
 		//print 'x'.$maskbefore.'-'.$maskafter.'y';
 		$numFinal = str_replace($maskbefore, $maskafter, $numFinal);
-		
-		die($numFinal);
+
 		return $numFinal;
 	}
 
