@@ -93,12 +93,16 @@
 						<tr><td>{l s='Synchronize customers -> added to Dolibarr when an account is created' mod='prestashoptodolibarrpro'}</td>
 							<td><input type = "checkbox" name = "checkSynchCustomer"
 							{if {$varMain.is_checked_synch_customer|escape:'htmlall':'UTF-8'} eq 'true'} checked= "checked"{/if}
-							value = "true"></td>
+							value = "true">&nbsp; &nbsp; {l s='Customer Mask Ex.: CU{000000}' mod='prestashoptodolibarrpro'}&nbsp;
+								<input type = "text" name = "mask_customer" value = "{$varMain.ws_mask_customer_value|escape:'htmlall':'UTF-8'}"/>
+								</td>
 						</tr>
 						<tr><td>{l s='Synchronize products -> added to Dolibarr when a product is added or modified' mod='prestashoptodolibarrpro'}</td>
 							<td><input type = "checkbox" name = "checkSynchProducts"';
 							{if {$varMain.is_checked_synch_product|escape:'htmlall':'UTF-8'} eq 'true'} checked= "checked"{/if}
-							value = "true"></td>
+							value = "true">&nbsp; &nbsp; {l s='Product Mask Ex.: PR{000000}' mod='prestashoptodolibarrpro'}&nbsp;
+								<input type = "text" name = "mask_product" value = "{$varMain.ws_mask_product_value|escape:'htmlall':'UTF-8'}"/>
+								</td>
 						</tr>
 						<tr><td>{l s='Synchronize products Stocks -> updated to Dolibarr when a product Stock is updated in Prestashop' mod='prestashoptodolibarrpro'}
 								<br><font size='1'><i>{l s='for stock update on shopping, go in dolibarr on the settings of the stock (Modules > main modules > stock settings)' mod='prestashoptodolibarrpro'}</i></font>
@@ -115,12 +119,16 @@
 						<tr><td>{l s='Synchronize invoices -> added to Dolibarr after command paiement' mod='prestashoptodolibarrpro'}</td>
 							<td><input type = "checkbox" name = "checkSynchInvoice"';
 							{if {$varMain.is_checked_synch_invoice|escape:'htmlall':'UTF-8'} eq 'true'} checked= "checked"{/if}
-							value = "true"></td>
+							value = "true">&nbsp; &nbsp; {l s='Invoice Mask Ex.: FA{000000}' mod='prestashoptodolibarrpro'}&nbsp;
+								<input type = "text" name = "mask_invoice" value = "{$varMain.ws_mask_invoice_value|escape:'htmlall':'UTF-8'}"/>
+								</td>
 						</tr>
 						<tr><td>{l s='Synchronize orders -> added to Dolibarr after command paiement' mod='prestashoptodolibarrpro'}</td>
 							<td><input type = "checkbox" name = "checkSynchOrder"';
 							{if {$varMain.is_checked_synch_order|escape:'htmlall':'UTF-8'} eq 'true'} checked= "checked"{/if}
-							value = "true"></td>
+							value = "true">&nbsp; &nbsp; {l s='Order Mask Ex.: PRO{000000}' mod='prestashoptodolibarrpro'}&nbsp;
+								<input type = "text" name = "mask_order" value = "{$varMain.ws_mask_order_value|escape:'htmlall':'UTF-8'}"/>
+								</td>
 						</tr>
 						<tr><td>{l s='Synchronize categories -> added to Dolibarr when a category is added or modified or deleted' mod='prestashoptodolibarrpro'} &nbsp;</td>
 							<td><input type = "checkbox" name = "checkSynchCategory"';
