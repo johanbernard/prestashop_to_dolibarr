@@ -1050,6 +1050,7 @@ class PrestashopToDolibarrPro extends Module
         $nb_product_total    = 0;
         $nb_product_imported = 0;
         $nbr_max_product     = false;
+        $mask_product = (($this->ws_mask_product_value!='')?$this->ws_mask_product_value:'{0000000000}');
 
         $this->logInFile('--IMPORTING THE PRODUCTS--');
 
@@ -1061,10 +1062,11 @@ class PrestashopToDolibarrPro extends Module
         // Get product ids including external reference <> external reference, in ascending order
         $idsrefdoliproduct = $this->getRefdoliEmpty('product');
         $this->logInFile('list of product ids including doli ref <> : '.print_r($idsrefdoliproduct, true));
+        
         if ($idsrefdoliproduct) {
             foreach ($idsrefdoliproduct as $product) {
                 if ($product['reference'] == '') {  // empty reference => we created it
-                    $refdoli = $this->ws_trigram_value.$this->dolibarr_ref_ind;
+                    $refdoli = $this->ws_trigram_value.$this->maskRef($mask_product, $this->dolibarr_ref_ind);
                     $this->dolibarr_ref_ind++;
                     Configuration::updateValue('DOLIBARR_REF_IND', $this->dolibarr_ref_ind);
                     $this->updateRefEmpty($product['id_product'], $refdoli, 'product');
@@ -1076,7 +1078,7 @@ class PrestashopToDolibarrPro extends Module
                         // It is unique
                         $refdoli = $product['reference'];
                     } else {
-                        $refdoli = $product['reference'].'-p'.$this->dolibarr_ref_ind;
+                        $refdoli = $product['reference'].'-p'.$this->maskRef($mask_product, $this->dolibarr_ref_ind);
                         $this->dolibarr_ref_ind ++;
                         Configuration::updateValue('DOLIBARR_REF_IND', $this->dolibarr_ref_ind);
                     }
@@ -1136,7 +1138,7 @@ class PrestashopToDolibarrPro extends Module
         }
 
         // Account loop for all products
-        foreach ($products as $product) {
+        foreach ($products as &$product) {
              if (_PS_VERSION_ < '1.5') {
                 $product_attributes_ids = $this->getProductAttributesIds($product['id_product'], 0);
             } else {
@@ -1149,29 +1151,25 @@ class PrestashopToDolibarrPro extends Module
             foreach ($product_attributes_ids as $product_attribute_id) {
                 $nb_product_total++;
             }
+            // Recovery of variations
+            $product['product_attributes_ids'] = $product_attributes_ids;
         }
+        //DONT delete please!
+        unset($product);
+
+        $this->logInFile('Nb of products: ('.count($products).') + ('.($nb_product_total-count($products)).') Attributes = '.$nb_product_total);
 
         $id_product_doli_ec = '';
         $wsretour = array();
         $wsretour['result']['result_label'] = '';
         // father product path
-        foreach ($products as $product) {
+        foreach ($products as $product)
+	{
             $this->logInFile('->product path id: '.$product['id_product'].' / '.print_r($product, true));
 
-            // Recovery of variations
-            if (_PS_VERSION_ < '1.5') {
-                $product_attributes_ids = $this->getProductAttributesIds($product['id_product'], 0);
-            } else {
-                $product_attributes_ids = Product::getProductAttributesIds($product['id_product'], false);
-            }
-
-            // The product has no attribute: we create a fictitious = '0'
-            if (!$product_attributes_ids) {
-                $product_attributes_ids = array(array('id_product_attribute'=>0));
-            }
-
             // Loop on variations
-            foreach ($product_attributes_ids as $product_attribute_id) {
+            foreach ($products['product_attributes_ids'] as $product_attribute_id)
+	    {
                 $product_ref = $this->ws_trigram_value.$this->format($product['id_product'], 10);
                 if($product_attribute_id['id_product_attribute']>0) {
                 	$this->format($product_attribute_id['id_product_attribute'], 10);
@@ -1180,9 +1178,9 @@ class PrestashopToDolibarrPro extends Module
 
                 // Internal references recuperation
                 $product_ref_interne = $this->getProductRef(
-                    $product['id_product'],
-                    $product_attribute_id['id_product_attribute']
-                );
+                        $product['id_product'],
+                        $product_attribute_id['id_product_attribute']
+                    );
                 $this->logInFile(
                     '--> internal product references recovered ('.$product['id_product'].', '
                     .$product_attribute_id['id_product_attribute'].') : '.print_r($product_ref_interne, true));
@@ -1201,13 +1199,6 @@ class PrestashopToDolibarrPro extends Module
                 }
                 $product_presta_ref = $product_ref_interne['ref_doli'];
                 $this->logInFile('-->ref attribute path : '.$product_ref.' / '.$product_presta_ref);
-
-                // Bug correction on id attribute in orders and invoices
-                if (array_key_exists('id_product_attribute', $product) == true) {
-                    if ($product['id_product_attribute'] == $product_attribute_id['id_product_attribute']) {
-                        $id_product_doli_ec = $product_ref_interne['id_ext_doli'];
-                    }
-                }
 
                 // Anti deferral management
                 if ($product_ref_interne['date_export_doli'] >= max($product['date_upd'], $product['date_add'])) {
@@ -1292,26 +1283,27 @@ class PrestashopToDolibarrPro extends Module
                     $result = 'KO';
                     break;
                 }
-
-                // number of max product reached
-                $tmsp_now = time();
-                $this->logInFile('--->tmsp Start :'.$tmsp_start, 'ERROR');
-                $this->logInFile('--->tmsp Now :'.$tmsp_now, 'ERROR');
-                $this->logInFile('--->tmsp diff :'.($tmsp_now - $tmsp_start), 'ERROR');
-                if ((($tmsp_now - $tmsp_start) >= $this->nbr_max_sec_export) &&
-                ($nb_product_imported != $nb_product_total)) {
-                    $nbr_max_product = true;
-                    $this->logInFile('---> max number of exported products reached, break');
-                    break;
-                }
-
-                // correction bug on id attribute in orders and invoices
+		    
+                // Bug correction on id attribute in orders and invoices
                 if (array_key_exists('id_product_attribute', $product) == true) {
                     if ($product['id_product_attribute'] == $product_attribute_id['id_product_attribute']) {
                         $id_product_doli_ec = $product_ref_interne['id_ext_doli'];
                     }
-                }
+                }               
             }
+
+            // number of max product reached
+            $tmsp_now = time();
+            $this->logInFile('--->tmsp Start :'.$tmsp_start, 'ERROR');
+            $this->logInFile('--->tmsp Now :'.$tmsp_now, 'ERROR');
+            $this->logInFile('--->tmsp diff :'.($tmsp_now - $tmsp_start), 'ERROR');
+            if ((($tmsp_now - $tmsp_start) >= $this->nbr_max_sec_export) &&
+                ($nb_product_imported != $nb_product_total)) {
+                $nbr_max_product = true;
+                $this->logInFile('---> max number of exported products reached, break');
+                break;
+            }
+		
             if ($result == 'KO' || $nbr_max_product) {
                 break;
             }
