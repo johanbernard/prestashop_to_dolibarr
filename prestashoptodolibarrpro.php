@@ -1050,6 +1050,7 @@ class PrestashopToDolibarrPro extends Module
         $nb_product_total    = 0;
         $nb_product_imported = 0;
         $nbr_max_product     = false;
+        $mask_product = (($this->ws_mask_product_value!='')?$this->ws_mask_product_value:'{0000000000}');
 
         $this->logInFile('--IMPORTING THE PRODUCTS--');
 
@@ -1061,10 +1062,11 @@ class PrestashopToDolibarrPro extends Module
         // Get product ids including external reference <> external reference, in ascending order
         $idsrefdoliproduct = $this->getRefdoliEmpty('product');
         $this->logInFile('list of product ids including doli ref <> : '.print_r($idsrefdoliproduct, true));
+        
         if ($idsrefdoliproduct) {
             foreach ($idsrefdoliproduct as $product) {
                 if ($product['reference'] == '') {  // empty reference => we created it
-                    $refdoli = $this->ws_trigram_value.$this->dolibarr_ref_ind;
+                    $refdoli = $this->ws_trigram_value.$this->maskRef($mask_product, $this->dolibarr_ref_ind);
                     $this->dolibarr_ref_ind++;
                     Configuration::updateValue('DOLIBARR_REF_IND', $this->dolibarr_ref_ind);
                     $this->updateRefEmpty($product['id_product'], $refdoli, 'product');
@@ -1076,7 +1078,7 @@ class PrestashopToDolibarrPro extends Module
                         // It is unique
                         $refdoli = $product['reference'];
                     } else {
-                        $refdoli = $product['reference'].'-p'.$this->dolibarr_ref_ind;
+                        $refdoli = $product['reference'].'-p'.$this->maskRef($mask_product, $this->dolibarr_ref_ind);
                         $this->dolibarr_ref_ind ++;
                         Configuration::updateValue('DOLIBARR_REF_IND', $this->dolibarr_ref_ind);
                     }
