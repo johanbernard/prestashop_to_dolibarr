@@ -1168,7 +1168,7 @@ class PrestashopToDolibarrPro extends Module
             $this->logInFile('->product path id: '.$product['id_product'].' / '.print_r($product, true));
 
             // Loop on variations
-            foreach ($products['product_attributes_ids'] as $product_attribute_id)
+            foreach ($product['product_attributes_ids'] as $product_attribute_id)
 	    {
                 $product_ref = $this->ws_trigram_value.$this->format($product['id_product'], 10);
                 if($product_attribute_id['id_product_attribute']>0) {
@@ -1426,7 +1426,7 @@ class PrestashopToDolibarrPro extends Module
 				else if ($image_id >= 1000 && $image_id < 10000)
 					$image_path = $image_id[0].'/'.$image_id[1].'/'.$image_id[2].'/'.$image_id[3].'/';
 
-				$imageType = '-'.ImageType::getFormatedName('home');
+				$imageType = '-'.ImageType::getFormattedName('home');
 				$image_path_hd = $image_path.$image_id.$imageType.'.jpg';
 
 				$image_name = $image_id.$imageType.'.jpg';
@@ -1621,7 +1621,7 @@ class PrestashopToDolibarrPro extends Module
         }
 
         // creation of the customer's array of the invoice:
-        $obj_customer = new customer($facture_ec->id_customer);
+        $obj_customer = new Customer($facture_ec->id_customer);
         $customer = array(
 						'id_customer'=>$obj_customer->id,
 						'email'=>$obj_customer->email,
@@ -2045,7 +2045,7 @@ class PrestashopToDolibarrPro extends Module
             // we export the product
             $this->logInFile('product in invoice : '.$ref_product.' : '.print_r($product_tab[$i], true));
 
-            $testproduct = new product($product_tab[$i]['product_id'], true, $this->default_lang, null, null);
+            $testproduct = new Product($product_tab[$i]['product_id'], true, $this->default_lang, null, null);
 
             $description_short = $this->noSpecialCharacterV3($testproduct->description_short);
 
@@ -2254,7 +2254,7 @@ class PrestashopToDolibarrPro extends Module
 
 			// we export the product
 			$this->logInFile('Product in invoice, ref : '.$ref_product.' -> '.print_r($product_tab[$i], true));
-			$testproduct = new product($product_tab[$i]['product_id'], true, $this->default_lang, null, null);
+			$testproduct = new Product($product_tab[$i]['product_id'], true, $this->default_lang, null, null);
 			$description_short = $this->noSpecialCharacterV3($testproduct->description_short);
 			$product_to_set = array(
 				'id_product'=>$product_tab[$i]['product_id'],
@@ -2553,7 +2553,7 @@ class PrestashopToDolibarrPro extends Module
         $this->logInFile('hookUpdateProduct: '.$product_id);
 
         if ($this->is_checked_synch_product == 'true' || $this->is_checked_synch_stock == 'true') {
-            $testproduct = new product($product_id, true, $this->default_lang, null, null);
+            $testproduct = new Product($product_id, true, $this->default_lang, null, null);
             $product = array(
 							'id_product'=>$product_id,
 							'description_short'=>$testproduct->description_short,
@@ -2584,7 +2584,7 @@ class PrestashopToDolibarrPro extends Module
         $this->logInFile('hookAddproduct: ');
 
         if ($this->is_checked_synch_product == 'true') {
-            $testproduct = new product($product_id, true, $this->default_lang, null, null);
+            $testproduct = new Product($product_id, true, $this->default_lang, null, null);
             $product = array(
 							'id_product'=>$product_id,
 							'description_short'=>$testproduct->description_short,
